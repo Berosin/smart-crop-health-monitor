@@ -40,3 +40,51 @@ ENV_RANGES = {
     "soil_moisture": {"min": 0, "max": 100, "unit": "%"},    # soil water content
     "rainfall":    {"min": 0,   "max": 500, "unit": "mm"},   # daily rainfall
 }
+
+# ---------------------------------------------------------------------------
+# Per-crop ideal environmental ranges used by the Environmental Analysis page
+# ---------------------------------------------------------------------------
+# Each tuple is (low, optimal_min, optimal_max, high) — values below `low` or
+# above `high` are suboptimal; between optimal_min and optimal_max is ideal.
+ENV_CROP_RANGES = {
+    "Tomato": {
+        "temperature":   (10, 18, 30, 38),   # °C
+        "humidity":      (40, 55, 70, 90),   # %
+        "soil_moisture": (35, 50, 65, 85),   # %
+        "rainfall":      (0,  20, 80, 150),  # mm/day
+    },
+    "Corn": {
+        "temperature":   (10, 18, 32, 40),
+        "humidity":      (45, 55, 75, 90),
+        "soil_moisture": (40, 50, 70, 85),
+        "rainfall":      (0,  25, 100, 160),
+    },
+    "Potato": {
+        "temperature":   (7,  15, 25, 32),
+        "humidity":      (50, 60, 80, 95),
+        "soil_moisture": (45, 55, 70, 85),
+        "rainfall":      (0,  20, 90, 140),
+    },
+    "Rice": {
+        "temperature":   (15, 22, 33, 42),
+        "humidity":      (55, 65, 85, 98),
+        "soil_moisture": (60, 75, 95, 100),
+        "rainfall":      (0,  40, 150, 250),
+    },
+    "Wheat": {
+        "temperature":   (5,  12, 25, 35),
+        "humidity":      (40, 50, 70, 88),
+        "soil_moisture": (35, 45, 65, 80),
+        "rainfall":      (0,  15, 70, 120),
+    },
+}
+
+ENV_RISK_THRESHOLDS = {
+    # (count of suboptimal factors) -> (risk level, label color)
+    0: ("Optimal",   "#2e7d32"),
+    1: ("Low",       "#66bb6a"),
+    2: ("Moderate",  "#ff9800"),
+    3: ("High",      "#ef5350"),
+    4: ("Critical",  "#c62828"),
+}
+
