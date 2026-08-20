@@ -1,0 +1,25 @@
+# Web UI
+streamlit>=1.32.0
+
+# Deep Learning (disease detection model)
+tensorflow>=2.15.0
+keras>=2.15.0
+
+# Classical ML (supplementary scoring / recommendations)
+scikit-learn>=1.4.0
+
+# Image processing
+opencv-python-headless>=4.9.0
+
+# Data processing
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Database (built-in, but listed for clarity)
+# sqlite3  — part of the Python standard library
+
+# Visualization
+plotly>=5.20.0
+
+# Utilities
+Pillow>=10.2.0
