@@ -92,6 +92,38 @@ def inject_custom_css() -> None:
             margin-top: 2.5rem; text-align: center; color: #8a8a8a;
             font-size: .78rem; border-top: 1px solid #eee; padding-top: .9rem;
         }
+
+        /* Health score card */
+        .health-card {
+            background: #ffffff; border: 1px solid #ececec;
+            border-radius: 16px; padding: 1.4rem 1.5rem;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.05); text-align: center;
+        }
+        .health-card .score-label { font-size:.78rem;color:#666;
+            text-transform:uppercase;letter-spacing:.05em }
+        .health-card .score-value { font-size:2.8rem;font-weight:800;
+            line-height:1.1; }
+        .health-card .score-grade { font-size:1.1rem;font-weight:700;
+            margin-top:.2rem }
+        /* score-bar inside the health card */
+        .score-bar-track { background:#eee;border-radius:8px;height:14px;
+            margin:.7rem 0 .3rem;overflow:hidden }
+        .score-bar-fill  { height:100%;border-radius:8px }
+
+        /* Risk indicator pill */
+        .risk-pill { display:inline-flex;align-items:center;gap:.4rem;
+            padding:.35rem .8rem;border-radius:20px;font-weight:700;
+            font-size:.85rem;color:#fff }
+        .risk-dot { width:10px;height:10px;border-radius:50%;background:#fff }
+
+        /* Recommendation item */
+        .rec-item { display:flex;gap:.7rem;align-items:flex-start;
+            padding:.7rem .9rem;border:1px solid #ececec;border-radius:10px;
+            margin-bottom:.55rem;background:#fff }
+        .rec-icon { font-size:1.2rem;line-height:1.3 }
+        .rec-text { font-size:.88rem;color:#333 }
+        .rec-title { font-weight:700;color:var(--ink);font-size:.9rem;
+            margin-bottom:.1rem }
         </style>
         """,
         unsafe_allow_html=True,
@@ -159,6 +191,132 @@ def footer() -> None:
         "No hardware required</div>",
         unsafe_allow_html=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Reusable analysis components (score card, risk indicator, metric, recs)
+# ---------------------------------------------------------------------------
+def score_color(score: int) -> str:
+    """Map a 0-100 score to a status color."""
+    if score >= 70:
+        return "#2e7d32"
+    if score >= 40:
+        return "#fdd835"
+    return "#e57373"
+
+
+def score_grade(score: int) -> str:
+    """Map a 0-100 score to a letter grade."""
+    if score >= 80:
+        return "A"
+    if score >= 60:
+        return "B"
+    if score >= 40:
+        return "C"
+    return "D"
+
+
+def health_score_card(score: int, grade: str | None = None,
+                      label: str = "Overall health score",
+                      show_bar: bool = True) -> None:
+    """A reusable, themed health-score card with a 0-100 progress bar."""
+    if grade is None:
+        grade = score_grade(score)
+    color = score_color(score)
+    status = ("Excellent" if score >= 80 else "Good" if score >= 60 else
+              "Poor" if score >= 40 else "Critical")
+    bar_html = (
+        f"""
+        <div class="score-bar-track">
+          <div class="score-bar-fill" style="width:{score}%;background:{color}"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;
+                    font-size:.72rem;color:#888">
+          <span>0</span><span>100</span>
+        </div>
+        """ if show_bar else "")
+    st.markdown(
+        f"""
+        <div class="health-card">
+          <div class="score-label">{label}</div>
+          <div class="score-value" style="color:{color}">{score}<span
+              style="font-size:1.2rem;color:#999">/100</span></div>
+          <div class="score-grade">Grade {grade} · {status}</div>
+          {bar_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# Risk level -> (label, color, weight 0-1). Shared by all pages.
+RISK_LEVELS: dict[str, tuple[str, str, float]] = {
+    "Optimal":   ("Optimal",   "#2e7d32", 0.0),
+    "Low":       ("Low",       "#66bb6a", 0.25),
+    "Moderate":  ("Moderate",  "#ff9800", 0.50),
+    "High":      ("High",      "#ef5350", 0.75),
+    "Critical":  ("Critical",  "#c62828", 1.0),
+}
+
+
+def risk_indicator(level: str, label: str | None = None,
+                   show_bar: bool = False) -> None:
+    """A reusable colored pill + optional bar representing a risk level."""
+    lvl, color, weight = RISK_LEVELS.get(level, ("Unknown", "#9e9e9e", 0.5))
+    if label is None:
+        label = lvl
+    bar_html = ""
+    if show_bar:
+        bar_html = (
+            f"""<div class="score-bar-track" style="height:8px">
+                  <div class="score-bar-fill"
+                       style="width:{int(weight*100)}%;background:{color}"></div>
+                </div>""")
+    st.markdown(
+        f"""
+        <div style="margin-bottom:.5rem">
+          <span class="risk-pill" style="background:{color}">
+            <span class="risk-dot"></span>{label}
+          </span>
+          {bar_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def metric_display(label: str, value: str, sub: str | None = None,
+                   accent: str | None = None) -> None:
+    """A reusable metric tile with an optional colored left accent."""
+    border = (f"border-left:5px solid {accent};"
+              if accent else "border-left:5px solid var(--leaf);")
+    sub_html = f'<div class="delta">{sub}</div>' if sub else ""
+    st.markdown(
+        f"""
+        <div class="metric-tile" style="{border}">
+          <div class="label">{label}</div>
+          <div class="value">{value}</div>
+          {sub_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def recommendation_display(recommendations: list[tuple[str, str]],
+                           title: str = "Recommendation") -> None:
+    """Render a list of (icon, text) recommendations as themed items."""
+    if not recommendations:
+        return
+    items = ""
+    for icon, text in recommendations:
+        items += (
+            f"<div class='rec-item'>"
+            f"<div class='rec-icon'>{icon}</div>"
+            f"<div><div class='rec-title'>{title}</div>"
+            f"<div class='rec-text'>{text}</div></div></div>"
+        )
+    st.markdown(items, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
