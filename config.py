@@ -18,7 +18,7 @@ APP_CONFIG = {
 # ---------------------------------------------------------------------------
 DB_PATH = "database/crop_health.db"
 
-MODEL_PATH = "models/crop_disease_model.h5"
+MODEL_PATH = "models/disease_model/model.keras"
 LABELS_PATH = "models/disease_labels.json"
 
 UPLOAD_DIR = "data/uploads"
