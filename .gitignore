@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/
+
+# Data / runtime artifacts (do not commit user uploads or DB)
+database/*.db
+database/*.sqlite*
+data/uploads/*
+data/samples/*
+data/raw/*
+data/processed/*
+!data/.gitkeep
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Model weights / labels (large, regenerable)
+models/*.h5
+models/*.keras
+models/*.pkl
+models/*.json
+!models/.gitkeep
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
