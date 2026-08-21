@@ -16,7 +16,11 @@ database/*.db
 database/*.sqlite*
 data/uploads/*
 data/samples/*
+data/raw/*
+data/processed/*
 !data/.gitkeep
+!data/raw/.gitkeep
+!data/processed/.gitkeep
 
 # Model weights / labels (large, regenerable)
 models/*.h5
