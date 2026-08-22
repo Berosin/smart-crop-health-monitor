@@ -168,7 +168,7 @@ def inject_custom_css() -> None:
         }
 
         /* ---------------------------------------------------------------
-           Sidebar
+        Sidebar
         --------------------------------------------------------------- */
         section[data-testid="stSidebar"] {
             background: var(--paper-deep);
@@ -181,9 +181,32 @@ def inject_custom_css() -> None:
         }
         .sidebar-sub { font-size: .8rem; color: var(--soil); margin-top: .1rem; }
 
-        /* Sidebar nav radio -> quiet list */
-        section[data-testid="stSidebar"] [role="radiogroup"] label {
-            border-radius: 8px; padding: .3rem .5rem; margin-bottom: .1rem;
+        /* Sidebar nav buttons — quiet/ghost when inactive, filled when the
+            current page, giving a clear "you are here" state (a plain
+            st.radio only shows a small selected dot, easy to miss). */
+        section[data-testid="stSidebar"] .stButton > button {
+            text-align: left;
+            justify-content: flex-start;
+            font-weight: 500;
+            border-radius: 8px;
+            padding: .5rem .8rem;
+            margin-bottom: .15rem;
+            transition: background .15s ease, color .15s ease, border-color .15s ease;
+        }
+        section[data-testid="stSidebar"] button[kind="secondary"] {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            box-shadow: none;
+        }
+        section[data-testid="stSidebar"] button[kind="secondary"]:hover {
+            background: rgba(47,109,70,0.09);
+            color: var(--ink);
+            border-color: transparent;
+        }
+        section[data-testid="stSidebar"] button[kind="primary"] {
+            font-weight: 600;
+            box-shadow: var(--shadow-sm);
         }
 
         /* ---------------------------------------------------------------
@@ -240,14 +263,87 @@ def inject_custom_css() -> None:
             text-transform: uppercase; letter-spacing: .04em; margin-bottom:.15rem }
 
         /* ---------------------------------------------------------------
-           Native widget refinements (buttons, tabs, expander)
+        Native widget refinements (buttons, tabs, expander)
         --------------------------------------------------------------- */
         .stButton > button, .stDownloadButton > button {
             border-radius: 8px; font-weight: 600; font-family: var(--font-body);
+            transition: box-shadow .15s ease, transform .1s ease;
         }
-        div[data-testid="stExpander"] { border-radius: var(--radius); border: 1px solid var(--line); }
+        .stButton > button:hover, .stDownloadButton > button:hover {
+            box-shadow: var(--shadow-sm);
+        }
+        .stButton > button:active {
+            transform: translateY(1px);
+        }
+        .stButton > button:disabled {
+            opacity: .55;
+        }
+        div[data-testid="stExpander"] {
+            border-radius: var(--radius); border: 1px solid var(--line);
+            box-shadow: var(--shadow-sm);
+        }
+        div[data-testid="stExpander"] summary {
+            font-family: var(--font-body); font-weight: 600; color: var(--ink);
+        }
+        div[data-testid="stExpander"] summary:hover { color: var(--leaf); }
         [data-testid="stMetricValue"] { font-family: var(--font-mono); color: var(--ink); }
-        [data-testid="stDataFrame"] { border-radius: var(--radius); overflow: hidden; }
+        [data-testid="stMetricLabel"] { font-family: var(--font-body); color: var(--text-muted); }
+
+        /* ---------------------------------------------------------------
+        Status messages (error / warning / success / info) — keep
+        Streamlit's universally-understood semantic colors, but bring
+        shape/type into the same card system as the rest of the app.
+        --------------------------------------------------------------- */
+        [data-testid="stAlert"] {
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+        }
+        [data-testid="stAlert"] p {
+            font-family: var(--font-body); font-size: .92rem; margin-bottom: 0;
+        }
+
+        /* ---------------------------------------------------------------
+        Loading states — keep the spinner text on-brand
+        --------------------------------------------------------------- */
+        [data-testid="stSpinner"] {
+            font-family: var(--font-body); color: var(--text-muted);
+            font-size: .9rem;
+        }
+
+        /* ---------------------------------------------------------------
+        Tables
+        --------------------------------------------------------------- */
+        [data-testid="stDataFrame"] {
+            border-radius: var(--radius); overflow: hidden;
+            border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+        }
+
+        /* ---------------------------------------------------------------
+        Images — uploaded/preview photos get the same card treatment
+        --------------------------------------------------------------- */
+        [data-testid="stImage"] img {
+            border-radius: var(--radius);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* ---------------------------------------------------------------
+        Form inputs — consistent corner radius across widget types
+        --------------------------------------------------------------- */
+        .stTextInput input, .stNumberInput input,
+        .stSelectbox div[data-baseweb="select"] > div,
+        .stMultiSelect div[data-baseweb="select"] > div,
+        .stDateInput input {
+            border-radius: 8px !important;
+        }
+
+        /* ---------------------------------------------------------------
+        Section dividers — quiet hairline instead of the browser default
+        --------------------------------------------------------------- */
+        hr {
+            border: none; border-top: 1px solid var(--line);
+            margin: 1.1rem 0;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -469,7 +565,12 @@ PAGES: list[tuple[str, str, str]] = [
 
 
 def render_sidebar() -> str:
-    """Render the branded sidebar nav and return the selected page key."""
+    """Render the branded sidebar nav and return the selected page key.
+
+    Uses full-width buttons (not st.radio) so the current page can be
+    given a clear filled "you are here" state — a plain radio only shows
+    a small selected dot next to the label, which is easy to miss.
+    """
     with st.sidebar:
         brand_icon = icon_html(APP_CONFIG["page_icon"], size=24, margin_right=".4em")
         st.markdown(
@@ -481,18 +582,23 @@ def render_sidebar() -> str:
         )
         st.markdown("---")
 
-        # st.radio only supports plain text options, so nav entries render
-        # as text-only labels here; each page's own header (page_header)
-        # still shows the matching Tabler icon once selected.
-        labels = [name for name, _, _ in PAGES]
-        keys = [key for _, key, _ in PAGES]
-        choice = st.radio("Navigate", labels, label_visibility="collapsed")
-        idx = labels.index(choice)
-        st.session_state["current_page"] = keys[idx]
+        current = st.session_state.get("current_page", PAGES[0][1])
 
+        st.caption("Navigate")
+        for name, key, _icon in PAGES:
+            is_active = key == current
+            clicked = st.button(
+                name, key=f"_nav_{key}", use_container_width=True,
+                type="primary" if is_active else "secondary",
+            )
+            if clicked and key != current:
+                st.session_state["current_page"] = key
+                st.rerun()
+
+        st.session_state["current_page"] = current  # always defined, even on first load
         st.markdown("---")
         st.caption("Agriculture-themed demo build")
-        return keys[idx]
+        return current
 
 
 # ---------------------------------------------------------------------------

@@ -118,7 +118,8 @@ def render() -> None:
 
         if compute:
             try:
-                results = _analyze(crop, disease, confidence, severity, env)
+                with st.spinner("Calculating crop health…"):
+                    results = _analyze(crop, disease, confidence, severity, env)
                 st.session_state["_health_results"] = results
             except FileNotFoundError:
                 callout(
@@ -313,8 +314,9 @@ def _render_save_section(r: dict) -> None:
 
     if st.button("Save Analysis", type="primary", use_container_width=True):
         try:
-            record = _build_db_record(r)
-            analysis_id = insert_analysis(record)
+            with st.spinner("Saving analysis…"):
+                record = _build_db_record(r)
+                analysis_id = insert_analysis(record)
             st.session_state["_health_saved_token"] = token
             st.session_state["_health_saved_id"] = analysis_id
             st.rerun()

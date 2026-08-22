@@ -34,10 +34,10 @@ from utils.icons import icon_html
 CROPS = list(ENV_CROP_RANGES.keys())
 
 FACTOR_META = {
-    "temperature":   {"icon": "temperature", "label": "Temperature",   "nudge": 2},
-    "humidity":      {"icon": "humidity",    "label": "Humidity",      "nudge": 5},
-    "soil_moisture": {"icon": "soil",        "label": "Soil moisture", "nudge": 5},
-    "rainfall":      {"icon": "rainfall",    "label": "Rainfall",      "nudge": 2},
+    "temperature":   {"icon": "temperature", "label": "Temperature",   "nudge": 2.0},
+    "humidity":      {"icon": "humidity",    "label": "Humidity",      "nudge": 5.0},
+    "soil_moisture": {"icon": "soil",        "label": "Soil moisture", "nudge": 5.0},
+    "rainfall":      {"icon": "rainfall",    "label": "Rainfall",      "nudge": 2.0},
 }
 
 
@@ -100,7 +100,8 @@ def render() -> None:
 
     if analyze:
         try:
-            results = _assess(crop, inputs)
+            with st.spinner("Assessing environmental risk…"):
+                results = _assess(crop, inputs)
             st.session_state["_env_results"] = results
             st.session_state["_env_crop"] = crop
         except FileNotFoundError:
