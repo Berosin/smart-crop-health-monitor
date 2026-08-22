@@ -6,12 +6,14 @@ Wired to the real pipeline:
   - src.health_engine.analyze_crop_health() — the modular, explainable
     scoring engine that blends disease + environmental signals into the
     final 0-100 health score.
+  - src.recommendation_engine.generate_recommendations() — pure rule-based
+    engine producing the detailed, explainable action list shown below.
 
 The disease side of the form is still manual entry (crop/disease/
 confidence/severity) since this page isn't wired to an uploaded image —
 that's what the Disease Detection page is for. Everything downstream of
 those four fields plus the environmental readings now runs through the
-same engine used across the app, instead of page-local rule logic.
+same engines used across the app, instead of page-local rule logic.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from config import (
 )
 from src.environment_model import predict_environmental_risk
 from src.health_engine import analyze_crop_health
+from src.recommendation_engine import generate_recommendations
 from utils.ui import (
     page_header,
     callout,
@@ -33,7 +36,6 @@ from utils.ui import (
     health_score_card,
     risk_indicator,
     metric_display,
-    recommendation_display,
     score_color,
 )
 from utils.icons import icon_html
@@ -47,11 +49,10 @@ ENV_LABELS = {
     "rainfall":      ("rainfall",    "Rainfall",      "mm"),
 }
 
-# Icon shown next to the combined recommendation, by health status.
-STATUS_ICON = {
-    "Healthy": "healthy", "Moderate": "eye",
-    "At Risk": "warning", "Critical": "warning",
-}
+# Recommendation-engine category -> icon key.
+CATEGORY_ICON = {"disease": "diseased", "environment": "temperature", "overall": "leaf"}
+# Recommendation-engine priority -> badge color (matches the app's severity palette).
+PRIORITY_COLOR = {"high": "#B5564B", "medium": "#C97A3B", "low": "#7FA687"}
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +134,8 @@ def render() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Computation — delegates to src.environment_model + src.health_engine
+# Computation — delegates to src.environment_model, src.health_engine,
+# and src.recommendation_engine
 # ---------------------------------------------------------------------------
 def _analyze(crop, disease, confidence, severity, env) -> dict:
     env_pred = predict_environmental_risk({
@@ -162,6 +164,17 @@ def _analyze(crop, disease, confidence, severity, env) -> dict:
     result["crop"] = crop
     result["env"] = env
     result["env_model_used"] = env_pred["model_used"]
+
+    result["rule_based"] = generate_recommendations(
+        crop=crop,
+        disease=disease,
+        severity=severity,
+        temperature=env["temperature"],
+        humidity=env["humidity"],
+        soil_moisture=env["soil_moisture"],
+        rainfall=env["rainfall"],
+        health_score=result["health_score"],
+    )
     return result
 
 
@@ -236,12 +249,38 @@ def _render(results: dict) -> None:
     st.markdown("#### Why this score?")
     callout(r["explanation"])
 
-    # --- Recommendation ------------------------------------------------
+    # --- Recommendations (rule-based engine) ----------------------------
     st.markdown("#### Agricultural recommendation")
-    recommendation_display(
-        [(STATUS_ICON.get(r["health_status"], "leaf"), r["recommendation"])],
-        title="Action",
-    )
+    _render_recommendations(r["rule_based"])
+
+
+def _render_recommendations(rule_based: dict) -> None:
+    """Render the rule-based recommendation engine's output: a summary,
+    any priority actions, then the full explainable list (text + why).
+    """
+    callout(rule_based["summary"])
+
+    if rule_based["priority_actions"]:
+        st.markdown("**Priority actions**")
+        for text in rule_based["priority_actions"]:
+            st.markdown(f"- {text}")
+        st.markdown("")
+
+    items = ""
+    for rec in rule_based["recommendations"]:
+        icon_tag = icon_html(CATEGORY_ICON.get(rec["category"], "leaf"), size=20, margin_right="0")
+        badge_color = PRIORITY_COLOR.get(rec["priority"], "#7FA687")
+        items += (
+            "<div class='rec-item'>"
+            f"<div class='rec-icon'>{icon_tag}</div>"
+            "<div>"
+            f"<div class='rec-title'>{rec['category'].title()} · "
+            f"<span style='color:{badge_color}'>{rec['priority'].upper()}</span></div>"
+            f"<div class='rec-text'>{rec['text']}</div>"
+            f"<div style='font-size:.78rem;color:#7C8571;margin-top:.15rem'>{rec['reason']}</div>"
+            "</div></div>"
+        )
+    st.markdown(items, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
