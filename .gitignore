@@ -9,7 +9,7 @@ venv/
 env/
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
 
 # Data / runtime artifacts (do not commit user uploads or DB)
 database/*.db
@@ -22,11 +22,12 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# Model weights / labels (large, regenerable)
-models/*.h5
-models/*.keras
-models/*.pkl
-models/*.json
+# Model weights / labels (large, regenerable) — matches nested model dirs too
+models/**/*.h5
+models/**/*.keras
+models/**/*.pkl
+models/**/*.joblib
+models/**/*.json
 !models/.gitkeep
 
 # OS / IDE

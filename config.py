@@ -22,6 +22,10 @@ DB_PATH = "database/crop_health.db"
 MODEL_PATH = "models/disease_model/model.keras"
 LABELS_PATH = "models/disease_labels.json"
 
+ENV_MODEL_DIR = "models/environment_model"
+ENV_MODEL_PATH = "models/environment_model/model.joblib"
+ENV_MODEL_METADATA_PATH = "models/environment_model/metadata.json"
+
 UPLOAD_DIR = "data/uploads"
 SAMPLE_DIR = "data/samples"
 
