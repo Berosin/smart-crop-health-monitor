@@ -4,6 +4,8 @@ Uses the trained TensorFlow/Keras MobileNetV2 model for inference.
 """
 
 from __future__ import annotations
+from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, MODEL_PATH, LABELS_PATH
+from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 
 import io
 import time
@@ -81,38 +83,24 @@ def load_model():
 
 
 # ---------------------------------------------------------------------------
-# Image preprocessing (OpenCV-style with TensorFlow)
+# Image preprocessing (OpenCV pipeline — see src/image_preprocessing.py)
 # ---------------------------------------------------------------------------
-def preprocess_image(uploaded_file, target_size=IMAGE_SIZE):
-    """Preprocess uploaded image for model inference.
+def preprocess_image(uploaded_file, target_size=IMAGE_SIZE,
+                     denoise: bool = False, remove_background: bool = False):
+    """Preprocess an uploaded leaf image for model inference.
 
-    Steps:
-    1. Read bytes
-    2. Decode with TensorFlow (handles JPG/PNG)
-    3. Resize to target_size
-    4. Apply MobileNetV2 preprocessing (scales to [-1, 1])
-    5. Add batch dimension
+    Delegates to src.image_preprocessing.preprocess_leaf_image — a
+    validated, OpenCV-based pipeline (format/corruption/size checks,
+    RGB conversion, resize, optional denoise/background handling,
+    MobileNetV2-compatible normalization). The trained model itself is
+    untouched; this only changes how bytes become its input tensor.
     """
-    try:
-        # Read file bytes
-        file_bytes = uploaded_file.read()
-        uploaded_file.seek(0)  # reset for potential re-use
-
-        # Decode image
-        img = tf.io.decode_image(file_bytes, channels=IMAGE_CHANNELS, expand_animations=False)
-
-        # Resize
-        img = tf.image.resize(img, target_size, method="bilinear")
-
-        # MobileNetV2 preprocessing: scales pixels to [-1, 1]
-        img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
-
-        # Add batch dimension
-        img = tf.expand_dims(img, axis=0)
-
-        return img.numpy()
-    except Exception as e:
-        raise ValueError(f"Image preprocessing failed: {e}")
+    file_bytes = uploaded_file.read()
+    uploaded_file.seek(0)  # reset for potential re-use
+    return preprocess_leaf_image(
+        file_bytes, target_size=target_size,
+        denoise=denoise, remove_background=remove_background,
+    )
 
 
 def predict_disease(model, class_names, image_batch, confidence_threshold=CONFIDENCE_THRESHOLD):
@@ -208,6 +196,21 @@ def render() -> None:
                 float(CONFIDENCE_THRESHOLD), 0.05,
                 help="Predictions below this confidence are flagged as uncertain.",
             )
+            st.markdown("**Preprocessing**")
+            denoise = st.checkbox(
+                "Noise reduction",
+                value=False,
+                help="Apply OpenCV non-local-means denoising before inference. "
+                    "Useful for grainy or low-light photos.",
+            )
+            remove_background = st.checkbox(
+                "Background handling",
+                value=False,
+                help="Softly flatten non-leaf-colored background toward neutral "
+                    "gray so the model focuses on the leaf. Useful for busy "
+                    "backgrounds; skip for close-up leaf-only photos.",
+            )
+            
 
         analyze = st.button(
             "Analyze", type="primary", use_container_width=True,
@@ -223,17 +226,19 @@ def render() -> None:
 
         if analyze and uploaded is not None:
             try:
-                # Preprocess with loading indicator
                 with st.spinner("Preprocessing image…"):
-                    image_batch = preprocess_image(uploaded)
+                    image_batch = preprocess_image(
+                        uploaded, denoise=denoise, remove_background=remove_background,
+                    )
 
-                # Run inference with loading indicator
                 with st.spinner("Running disease detection…"):
                     pred = predict_disease(model, class_names, image_batch, threshold)
 
                 st.session_state["_disease_pred"] = pred
                 st.rerun()
 
+            except ImageValidationError as e:
+                st.error(f"{e}")
             except ValueError as e:
                 st.error(f"{e}")
             except RuntimeError as e:
