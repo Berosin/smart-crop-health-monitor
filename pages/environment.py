@@ -1,9 +1,12 @@
 """Environmental Analysis page — log and assess environmental conditions.
 
-Rule-based, no ML model yet. For each chosen crop, the four environmental
-readings (temperature, humidity, soil moisture, rainfall) are scored against
-that crop's ideal ranges to derive a per-factor status and an overall risk
-level. A Plotly radar chart visualizes the four factors together.
+Wired to the trained environmental risk model (src.environment_model —
+Decision Tree / Random Forest, selected automatically at training time).
+The per-factor table and radar chart still compare each raw reading
+against the crop's ideal band directly (that's a visualization of the
+inputs, not a risk classification), but the overall risk level,
+confidence, health score, and headline recommendation now come from the
+model, matching how pages/health.py is wired.
 """
 
 from __future__ import annotations
@@ -14,8 +17,9 @@ import streamlit as st
 from config import (
     ENV_RANGES,
     ENV_CROP_RANGES,
-    ENV_RISK_THRESHOLDS,
 )
+from src.environment_model import predict_environmental_risk
+from src.health_engine import compute_environmental_risk_score
 from utils.ui import (
     page_header,
     callout,
@@ -23,6 +27,7 @@ from utils.ui import (
     footer,
     get_dummy_env_readings,
     CHART_THEME,
+    RISK_LEVELS,
 )
 from utils.icons import icon_html
 
@@ -43,12 +48,7 @@ def render() -> None:
     page_header(
         "environment",
         "Environmental Analysis",
-        "Log environmental conditions and assess crop risk — rule-based for now.",
-    )
-
-    callout(
-        "**Rule-based mode** — no ML model yet. Each reading is scored against "
-        "the selected crop's ideal range to derive a status and risk level."
+        "Log environmental conditions and assess crop risk with the trained model.",
     )
 
     col_input, col_summary = st.columns([2, 3])
@@ -93,14 +93,25 @@ def render() -> None:
 
     # ------------------------------------------------------- assessment
     if not analyze and not st.session_state.get("_env_results"):
-        callout("Click **Assess environment** to generate per-factor statuses, "
-                "an overall risk level, and a visualization.")
+        callout("Click **Assess environment** to run the trained risk model "
+                "and see per-factor statuses, an overall risk level, and a visualization.")
         footer()
         return
 
-    results = _assess(crop, inputs)
-    st.session_state["_env_results"] = results
-    st.session_state["_env_crop"] = crop
+    if analyze:
+        try:
+            results = _assess(crop, inputs)
+            st.session_state["_env_results"] = results
+            st.session_state["_env_crop"] = crop
+        except FileNotFoundError:
+            callout(
+                f"{icon_html('warning', size=18)}<b>Environmental risk model not found.</b> "
+                "Train it first with <code>python -m src.environment_model</code>."
+            )
+            footer()
+            return
+    else:
+        results = st.session_state["_env_results"]
 
     _render_risk_banner(results)
     _render_factor_table(results)
@@ -112,13 +123,16 @@ def render() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Rule-based assessment
+# Assessment — per-factor breakdown (rule-based, for display) +
+# overall risk (from the trained model)
 # ---------------------------------------------------------------------------
-def _assess(crop: str, inputs: dict) -> dict:
-    """Score each factor against the crop's ideal ranges (a, b, c, d)."""
+def _factor_breakdown(crop: str, inputs: dict) -> list[dict]:
+    """Compare each raw reading against the crop's ideal band. This is
+    visualization/explanation of the inputs, independent of the trained
+    classifier's overall risk call.
+    """
     ranges = ENV_CROP_RANGES[crop]
     factors = []
-    suboptimal = 0
 
     for key in ("temperature", "humidity", "soil_moisture", "rainfall"):
         value = inputs[key]
@@ -130,16 +144,12 @@ def _assess(crop: str, inputs: dict) -> dict:
             norm = (value - low) / (high - low) if high != low else 0.5
         elif low <= value < opt_min:
             status, color, note = "Low", "#ffb74d", f"Below ideal ({opt_min}–{opt_max}{unit})"
-            suboptimal += 1
             norm = (value - low) / (high - low) if high != low else 0.25
         elif opt_max < value <= high:
             status, color, note = "High", "#B5564B", f"Above ideal ({opt_min}–{opt_max}{unit})"
-            suboptimal += 1
             norm = (value - low) / (high - low) if high != low else 0.75
         else:
-            # Outside the safe band entirely (very low or very high).
             status, color, note = "Extreme", "#7C3730", "Outside safe range"
-            suboptimal += 1
             norm = 0.0 if value < low else 1.0
 
         factors.append({
@@ -152,34 +162,35 @@ def _assess(crop: str, inputs: dict) -> dict:
             "color": color,
             "note": note,
             "ideal": (opt_min, opt_max),
-            # 0..1 normalization within [low, high] for the radar chart
             "norm": round(max(0.0, min(1.0, norm)), 3),
         })
 
-    # Health score (100 = all optimal). Each suboptimal factor costs 25 pts,
-    # plus a penalty proportional to how far out of range it lies.
-    penalty = 0.0
-    for f in factors:
-        if f["status"] != "Optimal":
-            # distance from the nearer ideal edge, normalized by band width
-            lo, hi = f["ideal"]
-            if f["value"] < lo:
-                dist = (lo - f["value"]) / max(lo - ENV_RANGES[f["key"]]["min"], 1)
-            else:
-                dist = (f["value"] - hi) / max(ENV_RANGES[f["key"]]["max"] - hi, 1)
-            penalty += 25.0 + 25.0 * min(1.0, max(0.0, dist))
-    health = max(0, round(100 - penalty))
+    return factors
 
-    risk_level, risk_color = ENV_RISK_THRESHOLDS[min(suboptimal, 4)]
+
+def _assess(crop: str, inputs: dict) -> dict:
+    """Run the trained model for overall risk, plus a per-factor breakdown."""
+    factors = _factor_breakdown(crop, inputs)
+
+    env_pred = predict_environmental_risk({"crop": crop, **inputs})
+    health_score, _ = compute_environmental_risk_score(
+        env_pred["risk_level"], env_pred["probability"], env_pred["probabilities"],
+    )
+    risk_color = RISK_LEVELS.get(env_pred["risk_level"], RISK_LEVELS["Moderate"])[1]
+
     advice = _advice(crop, factors)
 
     return {
         "crop": crop,
         "factors": factors,
-        "suboptimal": suboptimal,
-        "risk_level": risk_level,
+        "risk_level": env_pred["risk_level"],
         "risk_color": risk_color,
-        "health_score": health,
+        "probability": env_pred["probability"],
+        "probabilities": env_pred["probabilities"],
+        "health_score": health_score,
+        "explanation": env_pred["explanation"],
+        "model_recommendation": env_pred["recommendation"],
+        "model_used": env_pred["model_used"],
         "advice": advice,
         "inputs": {f["key"]: f["value"] for f in factors},
     }
@@ -235,7 +246,7 @@ def _advice(crop: str, factors: list[dict]) -> list[str]:
 # ---------------------------------------------------------------------------
 def _render_risk_banner(results: dict) -> None:
     color = results["risk_color"]
-    bg = "#F5E9E6" if results["suboptimal"] >= 2 else "#EAEFE2"
+    bg = "#F5E9E6" if results["risk_level"] in ("High", "Critical") else "#EAEFE2"
     st.markdown(
         f"""
         <div style="background:{bg};border-left:5px solid {color};
@@ -246,6 +257,9 @@ def _render_risk_banner(results: dict) -> None:
                           letter-spacing:.04em">Overall risk level</div>
               <div style="font-size:1.6rem;font-weight:700;color:{color}">
                 {results['risk_level']}
+              </div>
+              <div style="font-size:.78rem;color:#7C8571">
+                {results['probability']*100:.0f}% model confidence · {results['model_used']}
               </div>
             </div>
             <div style="text-align:right">
@@ -259,6 +273,7 @@ def _render_risk_banner(results: dict) -> None:
         """,
         unsafe_allow_html=True,
     )
+    callout(results["explanation"])
 
 
 def _render_factor_table(results: dict) -> None:
@@ -295,9 +310,6 @@ def _render_radar(results: dict) -> None:
     values = [f["norm"] for f in results["factors"]]
     colors = [f["color"] for f in results["factors"]]
 
-    # Ideal-range band as a shaded area (same for all on the 0..1 axis: the
-    # optimal band sits at 0.33–0.67 by construction of low/opt_min/opt_max/high
-    # only approximately; instead we compute the actual normalized window).
     ideal_lo, ideal_hi = [], []
     crop = results["crop"]
     for f in results["factors"]:
@@ -308,7 +320,6 @@ def _render_radar(results: dict) -> None:
 
     fig = go.Figure()
 
-    # Ideal band (upper edge)
     fig.add_trace(go.Scatterpolar(
         r=ideal_hi + [ideal_hi[0]],
         theta=labels + [labels[0]],
@@ -316,14 +327,12 @@ def _render_radar(results: dict) -> None:
         line=dict(color="rgba(0,0,0,0)"),
         name="Ideal band", showlegend=True,
     ))
-    # Ideal band (lower edge, base)
     fig.add_trace(go.Scatterpolar(
         r=ideal_lo + [ideal_lo[0]],
         theta=labels + [labels[0]],
         line=dict(color="rgba(0,0,0,0)"),
         name="Ideal (low)", showlegend=False, hoverinfo="skip",
     ))
-    # Actual readings
     fig.add_trace(go.Scatterpolar(
         r=values + [values[0]],
         theta=labels + [labels[0]],
