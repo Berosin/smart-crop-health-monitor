@@ -8,6 +8,8 @@ Wired to the real pipeline:
     final 0-100 health score.
   - src.recommendation_engine.generate_recommendations() — pure rule-based
     engine producing the detailed, explainable action list shown below.
+  - src.db.insert_analysis() — persists the complete analysis to SQLite
+    when the user clicks "Save Analysis".
 
 The disease side of the form is still manual entry (crop/disease/
 confidence/severity) since this page isn't wired to an uploaded image —
@@ -18,12 +20,16 @@ same engines used across the app, instead of page-local rule logic.
 
 from __future__ import annotations
 
+import json
+import uuid
+
 import streamlit as st
 
 from config import (
     ENV_CROP_RANGES,
     ENV_RANGES,
 )
+from src.db import insert_analysis
 from src.environment_model import predict_environmental_risk
 from src.health_engine import analyze_crop_health
 from src.recommendation_engine import generate_recommendations
@@ -175,6 +181,11 @@ def _analyze(crop, disease, confidence, severity, env) -> dict:
         rainfall=env["rainfall"],
         health_score=result["health_score"],
     )
+
+    # A fresh, unique token per *computed* analysis (not per rerun). This is
+    # what the Save button's duplicate-save guard keys off — see
+    # _render_save_section() below.
+    result["_analysis_token"] = uuid.uuid4().hex
     return result
 
 
@@ -252,6 +263,63 @@ def _render(results: dict) -> None:
     # --- Recommendations (rule-based engine) ----------------------------
     st.markdown("#### Agricultural recommendation")
     _render_recommendations(r["rule_based"])
+
+    # --- Save to database -------------------------------------------
+    st.markdown("---")
+    _render_save_section(r)
+
+
+def _build_db_record(r: dict) -> dict:
+    """Map a health-engine result to src.db's `analyses` table columns."""
+    dr, er = r["disease_risk"], r["environmental_risk"]
+    return {
+        "crop_name": r["crop"],
+        "disease": dr["prediction"],
+        "confidence": dr["confidence"],
+        "severity": dr["severity"],
+        "temperature": r["env"]["temperature"],
+        "humidity": r["env"]["humidity"],
+        "soil_moisture": r["env"]["soil_moisture"],
+        "rainfall": r["env"]["rainfall"],
+        "health_score": r["health_score"],
+        "disease_risk": f"{dr['level']} ({dr['score']}/100)",
+        "environmental_risk": f"{er['level']} ({er['score']}/100)",
+        "recommendation": json.dumps(r["rule_based"]),
+        # created_at (timestamp) is filled in automatically by insert_analysis().
+    }
+
+
+def _render_save_section(r: dict) -> None:
+    """'Save Analysis' button, guarded against duplicate inserts.
+
+    Streamlit reruns the whole script on every interaction, and this
+    `results` dict stays in session_state across reruns — so without a
+    guard, a stray rerun or a second click on the same computed analysis
+    could insert the same row twice. Each freshly *computed* analysis gets
+    a unique `_analysis_token` (see _analyze()); we only allow a save when
+    that token hasn't already been recorded as saved, and once saved the
+    button is replaced with a confirmation instead of staying clickable.
+    Recomputing (even with identical inputs) mints a new token, so
+    intentionally logging the same reading again later is still allowed.
+    """
+    token = r["_analysis_token"]
+    saved_token = st.session_state.get("_health_saved_token")
+
+    if saved_token == token:
+        saved_id = st.session_state.get("_health_saved_id")
+        st.success(f"Analysis saved to database (ID: {saved_id}).")
+        st.button("Saved ✓", use_container_width=True, disabled=True)
+        return
+
+    if st.button("Save Analysis", type="primary", use_container_width=True):
+        try:
+            record = _build_db_record(r)
+            analysis_id = insert_analysis(record)
+            st.session_state["_health_saved_token"] = token
+            st.session_state["_health_saved_id"] = analysis_id
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to save analysis: {e}")
 
 
 def _render_recommendations(rule_based: dict) -> None:
