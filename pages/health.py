@@ -1,9 +1,17 @@
 """Crop Health Analysis page — combine disease + environment into a score.
 
-Uses dummy data and transparent rule-based weighting. The ML model and
-database are intentionally not connected yet. All display widgets are built
-from the four reusable functions in utils/ui.py:
-  health_score_card, risk_indicator, metric_display, recommendation_display.
+Wired to the real pipeline:
+  - src.environment_model.predict_environmental_risk() — trained
+    Decision Tree / Random Forest classifier for environmental risk.
+  - src.health_engine.analyze_crop_health() — the modular, explainable
+    scoring engine that blends disease + environmental signals into the
+    final 0-100 health score.
+
+The disease side of the form is still manual entry (crop/disease/
+confidence/severity) since this page isn't wired to an uploaded image —
+that's what the Disease Detection page is for. Everything downstream of
+those four fields plus the environmental readings now runs through the
+same engine used across the app, instead of page-local rule logic.
 """
 
 from __future__ import annotations
@@ -14,6 +22,8 @@ from config import (
     ENV_CROP_RANGES,
     ENV_RANGES,
 )
+from src.environment_model import predict_environmental_risk
+from src.health_engine import analyze_crop_health
 from utils.ui import (
     page_header,
     callout,
@@ -26,17 +36,21 @@ from utils.ui import (
     recommendation_display,
     score_color,
 )
+from utils.icons import icon_html
 
 CROPS = list(ENV_CROP_RANGES.keys())
-SEVERITY_WEIGHT = {           # severity -> impact on disease-risk weight
-    "None": 0.0, "Mild": 0.3, "Moderate": 0.6, "High": 0.9,
-}
 
 ENV_LABELS = {
     "temperature":   ("temperature", "Temperature",   "°C"),
     "humidity":      ("humidity",    "Humidity",      "%"),
     "soil_moisture": ("soil",        "Soil moisture", "%"),
     "rainfall":      ("rainfall",    "Rainfall",      "mm"),
+}
+
+# Icon shown next to the combined recommendation, by health status.
+STATUS_ICON = {
+    "Healthy": "healthy", "Moderate": "eye",
+    "At Risk": "warning", "Critical": "warning",
 }
 
 
@@ -48,11 +62,6 @@ def render() -> None:
         "health",
         "Crop Health Analysis",
         "Combine disease detection and environmental data into an overall health score.",
-    )
-
-    callout(
-        "**Dummy data · no ML / DB yet.** All metrics below are computed with a "
-        "transparent rule-based formula so the full layout can be reviewed."
     )
 
     col_in, col_out = st.columns([2, 3])
@@ -99,12 +108,17 @@ def render() -> None:
         st.markdown("#### Analysis result")
 
         results = st.session_state.get("_health_results")
-        trigger = compute or st.session_state.get("_health_dirty", False)
 
-        if compute or (results is not None and trigger):
-            results = _analyze(crop, disease, confidence, severity, env)
-            st.session_state["_health_results"] = results
-            st.session_state["_health_dirty"] = True
+        if compute:
+            try:
+                results = _analyze(crop, disease, confidence, severity, env)
+                st.session_state["_health_results"] = results
+            except FileNotFoundError:
+                callout(
+                    f"{icon_html('warning', size=18)}<b>Environmental risk model not found.</b> "
+                    "Train it first with <code>python -m src.environment_model</code>."
+                )
+                results = None
         elif results is None:
             card(
                 "Awaiting calculation",
@@ -119,115 +133,40 @@ def render() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Computation (rule-based, transparent)
+# Computation — delegates to src.environment_model + src.health_engine
 # ---------------------------------------------------------------------------
 def _analyze(crop, disease, confidence, severity, env) -> dict:
-    # --- Disease risk ---------------------------------------------------
-    sev_w = SEVERITY_WEIGHT.get(severity, 0.6)
-    conf_w = confidence                  # higher confidence in a disease = worse
-    is_healthy = (disease == "Healthy") or severity == "None"
-    if is_healthy:
-        disease_risk_score = 100        # 100 = low risk
-    else:
-        # disease risk score (100 = none, 0 = severe): penalise severity & confidence
-        disease_risk_score = round(100 - 60 * sev_w - 30 * conf_w)
-    disease_risk_score = max(0, min(100, disease_risk_score))
-    disease_risk_level = _score_to_risk(disease_risk_score)
-
-    # --- Environmental risk --------------------------------------------
-    env_score = _env_score(crop, env)   # 0-100, 100 = all ideal
-    env_risk_level = _score_to_risk(env_score)
-
-    # --- Overall health score -----------------------------------------
-    # Weights: disease 55%, environment 45%.
-    overall = round(0.55 * disease_risk_score + 0.45 * env_score)
-    overall = max(0, min(100, overall))
-
-    status = ("Healthy" if overall >= 80 else "Monitor" if overall >= 60 else
-              "At risk" if overall >= 40 else "Critical")
-
-    recs = _recommendations(disease, severity, confidence, env_score, crop,
-                            env_risk_level, is_healthy)
-
-    return {
+    env_pred = predict_environmental_risk({
         "crop": crop,
-        "disease": disease,
-        "confidence": confidence,
-        "severity": severity,
-        "env": env,
-        "disease_risk_score": disease_risk_score,
-        "disease_risk_level": disease_risk_level,
-        "env_score": env_score,
-        "env_risk_level": env_risk_level,
-        "overall": overall,
-        "status": status,
-        "recommendations": recs,
-        "is_healthy": is_healthy,
-    }
+        "temperature": env["temperature"],
+        "humidity": env["humidity"],
+        "soil_moisture": env["soil_moisture"],
+        "rainfall": env["rainfall"],
+    })
 
+    result = analyze_crop_health(
+        disease_prediction=disease,
+        disease_confidence=confidence,
+        disease_severity=severity,
+        environmental_risk=env_pred["risk_level"],
+        temperature=env["temperature"],
+        humidity=env["humidity"],
+        soil_moisture=env["soil_moisture"],
+        rainfall=env["rainfall"],
+        crop=crop,
+        environmental_probability=env_pred["probability"],
+        environmental_probabilities=env_pred["probabilities"],
+        environmental_recommendation=env_pred["recommendation"],
+    )
 
-def _env_score(crop: str, env: dict) -> int:
-    """0-100 environmental score based on how far each factor is from ideal."""
-    ranges = ENV_CROP_RANGES[crop]
-    total = 0.0
-    for key, (low, opt_min, opt_max, high) in ranges.items():
-        v = env[key]
-        if opt_min <= v <= opt_max:
-            total += 25.0
-        elif low <= v < opt_min:
-            span = opt_min - low or 1
-            total += 25.0 * max(0.0, 1 - (opt_min - v) / span)
-        elif opt_max < v <= high:
-            span = high - opt_max or 1
-            total += 25.0 * max(0.0, 1 - (v - opt_max) / span)
-        # else: outside safe band -> 0 for this factor
-    return max(0, min(100, round(total)))
-
-
-def _score_to_risk(score: int) -> str:
-    if score >= 85:
-        return "Optimal"
-    if score >= 65:
-        return "Low"
-    if score >= 40:
-        return "Moderate"
-    if score >= 20:
-        return "High"
-    return "Critical"
-
-
-def _recommendations(disease, severity, confidence, env_score, crop,
-                      env_risk, is_healthy) -> list[tuple[str, str]]:
-    recs: list[tuple[str, str]] = []
-    if is_healthy:
-        recs.append(("healthy",
-            "Crop appears healthy. Continue routine monitoring and balanced "
-            "irrigation to maintain condition."))
-    else:
-        recs.append(("diseased",
-            f"{disease} detected ({severity} severity, "
-            f"confidence {confidence*100:.0f}%): apply the appropriate "
-            "fungicide / removal strategy and improve air circulation."))
-        if severity == "High":
-            recs.append(("warning",
-                "Severity is high. Remove and destroy severely affected plants "
-                "to limit spread, and avoid working in the field while wet."))
-    if env_risk in ("High", "Critical"):
-        recs.append(("temperature",
-            "Environmental conditions are unfavourable — review temperature, "
-            "humidity, soil moisture, and drainage before the next irrigation."))
-    if env_risk in ("Moderate",):
-        recs.append(("eye",
-            "Environmental readings are marginal. Monitor closely and adjust "
-            "field practices as conditions change."))
-    if not recs:
-        recs.append(("leaf",
-            f"Keep up current practices for {crop} and continue regular scouting."))
-    return recs
+    result["crop"] = crop
+    result["env"] = env
+    result["env_model_used"] = env_pred["model_used"]
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Rendering (uses the four reusable functions)
+# Rendering
 # ---------------------------------------------------------------------------
 def _render(results: dict) -> None:
     r = results
@@ -235,13 +174,10 @@ def _render(results: dict) -> None:
     # --- Top: overall score card + status ------------------------------
     sc1, sc2 = st.columns([2, 3])
     with sc1:
-        health_score_card(
-            r["overall"],
-            label="Overall health score",
-        )
+        health_score_card(r["health_score"], label="Overall health score")
     with sc2:
         st.markdown("#### Overall crop status")
-        status_color = score_color(r["overall"])
+        status_color = score_color(r["health_score"])
         st.markdown(
             f"""
             <div style="background:#F7F7F1;border:1px solid #E2E5D8;
@@ -249,45 +185,45 @@ def _render(results: dict) -> None:
               <div style="font-size:.8rem;color:#5B6353;text-transform:uppercase;
                           letter-spacing:.05em">Status</div>
               <div style="font-size:1.6rem;font-weight:700;color:{status_color};
-                          margin-top:.2rem">{r['status']}</div>
+                          margin-top:.2rem">{r['health_status']}</div>
               <div style="font-size:.85rem;color:#7C8571">Crop: {r['crop']}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        st.caption(f"Environmental risk model: **{r['env_model_used']}**")
 
     # --- Disease + environmental risk indicators ------------------------
     st.markdown("#### Risk breakdown")
     rb1, rb2 = st.columns(2)
     with rb1:
         st.markdown("**Disease risk**")
-        risk_indicator(r["disease_risk_level"], show_bar=True)
-        st.caption(f"Disease score: {r['disease_risk_score']}/100")
+        risk_indicator(r["disease_risk"]["level"], show_bar=True)
+        st.caption(f"Disease score: {r['disease_risk']['score']}/100")
     with rb2:
         st.markdown("**Environmental risk**")
-        risk_indicator(r["env_risk_level"], show_bar=True)
-        st.caption(f"Env. score: {r['env_score']}/100")
+        risk_indicator(r["environmental_risk"]["level"], show_bar=True)
+        st.caption(f"Env. score: {r['environmental_risk']['score']}/100")
 
     st.markdown("---")
 
     # --- All metrics ---------------------------------------------------
     st.markdown("#### Detailed metrics")
-    # Disease block
     st.markdown("**Disease**")
     d1, d2, d3, d4 = st.columns(4)
+    dr = r["disease_risk"]
     with d1:
         metric_display("Crop name", r["crop"], accent="#2F6D46")
     with d2:
-        metric_display("Disease", r["disease"],
-                       accent="#CE8C82" if not r["is_healthy"] else "#7FA687")
+        metric_display("Disease", dr["prediction"],
+                       accent="#7FA687" if dr["level"] == "Optimal" else "#CE8C82")
     with d3:
-        metric_display("Confidence", f"{r['confidence']*100:.0f}%", "model output")
+        metric_display("Confidence", f"{dr['confidence']*100:.0f}%", "model output")
     with d4:
-        metric_display("Severity", r["severity"],
-                       accent="#B5564B" if r["severity"] in ("High",) else
-                             "#C97A3B" if r["severity"] == "Moderate" else "#7FA687")
+        metric_display("Severity", dr["severity"],
+                       accent="#B5564B" if dr["severity"] == "High" else
+                             "#C97A3B" if dr["severity"] == "Moderate" else "#7FA687")
 
-    # Environment block
     st.markdown("**Environment**")
     e1, e2, e3, e4 = st.columns(4)
     env_keys = ["temperature", "humidity", "soil_moisture", "rainfall"]
@@ -296,9 +232,16 @@ def _render(results: dict) -> None:
         with col:
             metric_display(label, f"{r['env'][key]} {unit}")
 
-    # --- Recommendations ------------------------------------------------
+    # --- Explanation ------------------------------------------------
+    st.markdown("#### Why this score?")
+    callout(r["explanation"])
+
+    # --- Recommendation ------------------------------------------------
     st.markdown("#### Agricultural recommendation")
-    recommendation_display(r["recommendations"], title="Action")
+    recommendation_display(
+        [(STATUS_ICON.get(r["health_status"], "leaf"), r["recommendation"])],
+        title="Action",
+    )
 
 
 if __name__ == "__main__":
