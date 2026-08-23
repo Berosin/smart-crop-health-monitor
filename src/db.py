@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterator
 
 from config import DB_PATH
+from src.errors import DatabaseError
 
 
 # ---------------------------------------------------------------------------
@@ -65,11 +66,21 @@ COLUMNS = [
 # ---------------------------------------------------------------------------
 @contextmanager
 def _connect(db_path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
-    """Open a SQLite connection, enable FK + Row factory, close on exit."""
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row          # rows behave like dicts
+    """Open a SQLite connection, enable FK + Row factory, close on exit.
+
+    Wraps any sqlite3 failure (locked file, disk full, permissions,
+    corrupted database, ...) into a DatabaseError with a clean, specific
+    message — callers never see a raw sqlite3.Error.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row          # rows behave like dicts
+    except sqlite3.Error as e:
+        raise DatabaseError(f"Could not open the database: {e}") from e
     try:
         yield conn
+    except sqlite3.Error as e:
+        raise DatabaseError(f"Database operation failed: {e}") from e
     finally:
         conn.close()
 
@@ -98,6 +109,9 @@ def insert_analysis(data: dict, db_path: str = DB_PATH) -> int:
     as NULL. A `created_at` timestamp (ISO-8601 UTC) is added automatically
     if not supplied.
     """
+    if not isinstance(data, dict) or not data:
+        raise DatabaseError("Cannot save an empty or invalid analysis record.")
+
     init_db(db_path)  # ensure schema exists on first use
 
     # Build column/value lists, filling only what was provided.

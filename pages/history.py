@@ -15,6 +15,7 @@ import pandas as pd
 import streamlit as st
 
 from src.db import get_analyses, delete_analysis
+from src.errors import safe_action, DatabaseError, logger
 from src.health_engine import classify_health_status
 from utils.ui import (
     page_header,
@@ -45,7 +46,20 @@ def render() -> None:
         "Review, filter, and manage previously saved crop analyses.",
     )
 
-    rows = get_analyses(limit=1000)
+    try:
+        rows = get_analyses(limit=1000)
+    except DatabaseError as e:
+        st.error(str(e))
+        footer()
+        return
+    except Exception:
+        logger.exception("Unexpected error loading analysis history")
+        st.error(
+            "Loading analysis history failed unexpectedly. Please try again. "
+            "If the problem continues, contact the app maintainer."
+        )
+        footer()
+        return
 
     if not rows:
         callout(
@@ -210,10 +224,11 @@ def _render_delete_control(row_id: int) -> None:
     yes_col, no_col = st.columns(2)
     with yes_col:
         if st.button("Yes, delete", key=f"_history_confirm_yes_{row_id}", type="primary"):
-            delete_analysis(row_id)
-            st.session_state.pop(confirm_key, None)
-            st.success(f"Analysis #{row_id} deleted.")
-            st.rerun()
+            with safe_action("Deleting analysis"):
+                delete_analysis(row_id)
+                st.session_state.pop(confirm_key, None)
+                st.success(f"Analysis #{row_id} deleted.")
+                st.rerun()
     with no_col:
         if st.button("Cancel", key=f"_history_confirm_no_{row_id}"):
             st.session_state.pop(confirm_key, None)

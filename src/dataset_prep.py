@@ -43,9 +43,20 @@ from config import IMAGE_SIZE, IMAGE_CHANNELS
 def get_class_names_from_dir(data_dir: str | Path) -> list[str]:
     """Infer class names from subdirectory names (sorted for determinism)."""
     p = Path(data_dir)
+    if not p.exists():
+        raise FileNotFoundError(
+            f"Dataset directory not found: {data_dir}. Create it with one "
+            "subfolder per class, each containing that class's images "
+            "(e.g. data/samples/Healthy/, data/samples/Early_Blight/)."
+        )
+    if not p.is_dir():
+        raise NotADirectoryError(f"{data_dir} exists but is not a directory.")
     classes = sorted([d.name for d in p.iterdir() if d.is_dir()])
     if not classes:
-        raise ValueError(f"No class subdirectories found in {data_dir}")
+        raise ValueError(
+            f"No class subdirectories found in {data_dir}. Expected one "
+            "subfolder per class (e.g. Healthy/, Early_Blight/, Late_Blight/)."
+        )
     return classes
 
 

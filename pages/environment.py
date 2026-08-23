@@ -19,7 +19,9 @@ from config import (
     ENV_CROP_RANGES,
 )
 from src.environment_model import predict_environmental_risk
+from src.errors import logger
 from src.health_engine import compute_environmental_risk_score
+from src.validation import validate_crop, validate_environmental_reading, ValidationError
 from utils.ui import (
     page_header,
     callout,
@@ -111,6 +113,18 @@ def render() -> None:
             )
             footer()
             return
+        except ValidationError as e:
+            st.error(str(e))
+            footer()
+            return
+        except Exception:
+            logger.exception("Unexpected error assessing environment")
+            st.error(
+                "Assessing environmental risk failed unexpectedly. Please try "
+                "again. If the problem continues, contact the app maintainer."
+            )
+            footer()
+            return
     else:
         results = st.session_state["_env_results"]
 
@@ -171,6 +185,9 @@ def _factor_breakdown(crop: str, inputs: dict) -> list[dict]:
 
 def _assess(crop: str, inputs: dict) -> dict:
     """Run the trained model for overall risk, plus a per-factor breakdown."""
+    crop = validate_crop(crop)
+    inputs = validate_environmental_reading(**inputs)
+
     factors = _factor_breakdown(crop, inputs)
 
     env_pred = predict_environmental_risk({"crop": crop, **inputs})
@@ -311,6 +328,9 @@ def _render_radar(results: dict) -> None:
     values = [f["norm"] for f in results["factors"]]
     colors = [f["color"] for f in results["factors"]]
 
+    # Ideal-range band as a shaded area (same for all on the 0..1 axis: the
+    # optimal band sits at 0.33–0.67 by construction of low/opt_min/opt_max/high
+    # only approximately; instead we compute the actual normalized window).
     ideal_lo, ideal_hi = [], []
     crop = results["crop"]
     for f in results["factors"]:
@@ -321,6 +341,7 @@ def _render_radar(results: dict) -> None:
 
     fig = go.Figure()
 
+    # Ideal band (upper edge)
     fig.add_trace(go.Scatterpolar(
         r=ideal_hi + [ideal_hi[0]],
         theta=labels + [labels[0]],
@@ -328,12 +349,14 @@ def _render_radar(results: dict) -> None:
         line=dict(color="rgba(0,0,0,0)"),
         name="Ideal band", showlegend=True,
     ))
+    # Ideal band (lower edge, base)
     fig.add_trace(go.Scatterpolar(
         r=ideal_lo + [ideal_lo[0]],
         theta=labels + [labels[0]],
         line=dict(color="rgba(0,0,0,0)"),
         name="Ideal (low)", showlegend=False, hoverinfo="skip",
     ))
+    # Actual readings
     fig.add_trace(go.Scatterpolar(
         r=values + [values[0]],
         theta=labels + [labels[0]],

@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.db import get_analyses
+from src.errors import DatabaseError, logger
 from src.health_engine import classify_health_status, HEALTH_STATUS_BANDS
 from utils.ui import (
     page_header,
@@ -46,7 +47,20 @@ def render() -> None:
         "Statistics and trends across all crop analyses.",
     )
 
-    rows = get_analyses(limit=2000)
+    try:
+        rows = get_analyses(limit=2000)
+    except DatabaseError as e:
+        st.error(str(e))
+        footer()
+        return
+    except Exception:
+        logger.exception("Unexpected error loading dashboard data")
+        st.error(
+            "Loading dashboard data failed unexpectedly. Please try again. "
+            "If the problem continues, contact the app maintainer."
+        )
+        footer()
+        return
 
     if not rows:
         callout(

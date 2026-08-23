@@ -4,8 +4,6 @@ Uses the trained TensorFlow/Keras MobileNetV2 model for inference.
 """
 
 from __future__ import annotations
-from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, MODEL_PATH, LABELS_PATH
-from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 
 import io
 import time
@@ -16,7 +14,9 @@ import plotly.graph_objects as go
 import streamlit as st
 import tensorflow as tf
 
-from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, IMAGE_CHANNELS, MODEL_PATH, LABELS_PATH
+from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, MODEL_PATH, LABELS_PATH
+from src.errors import safe_action, PredictionError, DatabaseError, logger
+from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 from utils.ui import (
     page_header,
     callout,
@@ -66,7 +66,15 @@ CLASS_COLORS = {
 # ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner="Loading disease detection model…")
 def load_model():
-    """Load the trained Keras model and class labels."""
+    """Load the trained Keras model and class labels.
+
+    Returns (None, None) if the model is missing or fails to load — the
+    caller shows a friendly "model unavailable" message either way. Any
+    unexpected loading error (corrupted file, version mismatch, ...) is
+    logged in full server-side, never shown to the user.
+    """
+    if not Path(MODEL_PATH).exists():
+        return None, None
     try:
         model = tf.keras.models.load_model(MODEL_PATH)
         # Load label map
@@ -77,8 +85,8 @@ def load_model():
         inv_map = {v: k for k, v in label_map.items()}
         class_names = [inv_map[i] for i in range(len(inv_map))]
         return model, class_names
-    except Exception as e:
-        st.error(f"Failed to load model: {e}")
+    except Exception:
+        logger.exception("Failed to load disease detection model")
         return None, None
 
 
@@ -142,7 +150,12 @@ def predict_disease(model, class_names, image_batch, confidence_threshold=CONFID
             "threshold": confidence_threshold,
         }
     except Exception as e:
-        raise RuntimeError(f"Prediction failed: {e}")
+        logger.exception("Disease prediction failed")
+        raise PredictionError(
+            "Disease prediction failed. The image may be incompatible with "
+            "the model, or the model file may be corrupted. Please try a "
+            "different image."
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -160,9 +173,11 @@ def render() -> None:
 
     if model is None:
         callout(
-            f"{icon_html('warning', size=18)}<b>Model not found.</b> Train the model first using "
-            "<code>python -m src.model_training --data-dir data/samples</code> "
-            "or place a trained model at <code>models/crop_disease_model.h5</code>."
+            f"{icon_html('warning', size=18)}<b>Model unavailable.</b> Train the model first using "
+            "<code>python -m src.model_training --data-dir data/samples</code>, "
+            "or place a trained model at <code>models/crop_disease_model.h5</code>. "
+            "If a model file exists but still won't load, check the server logs "
+            "for details."
         )
         footer()
         return
@@ -201,16 +216,15 @@ def render() -> None:
                 "Noise reduction",
                 value=False,
                 help="Apply OpenCV non-local-means denoising before inference. "
-                    "Useful for grainy or low-light photos.",
+                     "Useful for grainy or low-light photos.",
             )
             remove_background = st.checkbox(
                 "Background handling",
                 value=False,
                 help="Softly flatten non-leaf-colored background toward neutral "
-                    "gray so the model focuses on the leaf. Useful for busy "
-                    "backgrounds; skip for close-up leaf-only photos.",
+                     "gray so the model focuses on the leaf. Useful for busy "
+                     "backgrounds; skip for close-up leaf-only photos.",
             )
-            
 
         analyze = st.button(
             "Analyze", type="primary", use_container_width=True,
@@ -226,11 +240,13 @@ def render() -> None:
 
         if analyze and uploaded is not None:
             try:
+                # Preprocess with loading indicator
                 with st.spinner("Preprocessing image…"):
                     image_batch = preprocess_image(
                         uploaded, denoise=denoise, remove_background=remove_background,
                     )
 
+                # Run inference with loading indicator
                 with st.spinner("Running disease detection…"):
                     pred = predict_disease(model, class_names, image_batch, threshold)
 
@@ -238,13 +254,17 @@ def render() -> None:
                 st.rerun()
 
             except ImageValidationError as e:
-                st.error(f"{e}")
+                st.error(str(e))
             except ValueError as e:
-                st.error(f"{e}")
-            except RuntimeError as e:
-                st.error(f"{e}")
-            except Exception as e:
-                st.error(f"Unexpected error: {e}")
+                st.error(str(e))
+            except PredictionError as e:
+                st.error(str(e))
+            except Exception:
+                logger.exception("Unexpected error during disease analysis")
+                st.error(
+                    "Analyzing this image failed unexpectedly. Please try "
+                    "again. If the problem continues, contact the app maintainer."
+                )
 
         if pred is None:
             card(
@@ -348,7 +368,7 @@ def _render_result(pred: dict) -> None:
 
 def _save_analysis(pred: dict) -> None:
     """Save analysis to SQLite database."""
-    try:
+    with safe_action("Saving analysis"):
         from src.db import insert_analysis
         analysis_id = insert_analysis({
             "crop_name": "Unknown",  # Model doesn't predict crop type
@@ -360,8 +380,6 @@ def _save_analysis(pred: dict) -> None:
             "recommendation": pred["recommendation"],
         })
         st.success(f"Analysis saved to database (ID: {analysis_id})")
-    except Exception as e:
-        st.error(f"Failed to save: {e}")
 
 
 if __name__ == "__main__":

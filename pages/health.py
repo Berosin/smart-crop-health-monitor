@@ -31,8 +31,17 @@ from config import (
 )
 from src.db import insert_analysis
 from src.environment_model import predict_environmental_risk
+from src.errors import safe_action, logger
 from src.health_engine import analyze_crop_health
 from src.recommendation_engine import generate_recommendations
+from src.validation import (
+    validate_crop,
+    validate_confidence,
+    validate_severity,
+    validate_disease_name,
+    validate_environmental_reading,
+    ValidationError,
+)
 from utils.ui import (
     page_header,
     callout,
@@ -127,6 +136,16 @@ def render() -> None:
                     "Train it first with <code>python -m src.environment_model</code>."
                 )
                 results = None
+            except ValidationError as e:
+                st.error(str(e))
+                results = None
+            except Exception:
+                logger.exception("Unexpected error computing crop health")
+                st.error(
+                    "Calculating crop health failed unexpectedly. Please try "
+                    "again. If the problem continues, contact the app maintainer."
+                )
+                results = None
         elif results is None:
             card(
                 "Awaiting calculation",
@@ -141,10 +160,17 @@ def render() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Computation — delegates to src.environment_model, src.health_engine,
-# and src.recommendation_engine
+# Computation — delegates to src.environment_model + src.health_engine
 # ---------------------------------------------------------------------------
 def _analyze(crop, disease, confidence, severity, env) -> dict:
+    # Validate every input before touching any model — one combined,
+    # specific error if anything is out of range or malformed.
+    crop = validate_crop(crop)
+    disease = validate_disease_name(disease)
+    confidence = validate_confidence(confidence)
+    severity = validate_severity(severity)
+    env = validate_environmental_reading(**env)
+
     env_pred = predict_environmental_risk({
         "crop": crop,
         "temperature": env["temperature"],
@@ -313,15 +339,13 @@ def _render_save_section(r: dict) -> None:
         return
 
     if st.button("Save Analysis", type="primary", use_container_width=True):
-        try:
+        with safe_action("Saving analysis"):
             with st.spinner("Saving analysis…"):
                 record = _build_db_record(r)
                 analysis_id = insert_analysis(record)
             st.session_state["_health_saved_token"] = token
             st.session_state["_health_saved_id"] = analysis_id
             st.rerun()
-        except Exception as e:
-            st.error(f"Failed to save analysis: {e}")
 
 
 def _render_recommendations(rule_based: dict) -> None:

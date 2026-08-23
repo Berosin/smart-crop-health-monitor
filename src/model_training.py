@@ -518,7 +518,16 @@ if __name__ == "__main__":
         "batch_size": args.batch_size,
     }
 
-    result = run_training(data_path, **overrides)
+    try:
+        result = run_training(data_path, **overrides)
+    except (FileNotFoundError, NotADirectoryError, ValueError) as e:
+        # Known, expected dataset problems (missing dir, empty dir, no
+        # class subfolders, ...) get a clean message instead of a
+        # traceback; anything else still surfaces the full traceback,
+        # which is genuinely useful when running this CLI manually.
+        print(f"\nCould not start training: {e}")
+        exit(1)
+
     print("\n=== Training Complete ===")
     print(f"Test Accuracy: {result['metrics']['test_accuracy']:.4f}")
     print(f"Model saved to: {result['model_dir']}")
