@@ -6,8 +6,8 @@ only third-party dependency is the Python standard library (`sqlite3`).
 
 Schema
 ------
-One table, `analyses`, stores every crop health analysis produced by the
-Disease Detection, Environmental Analysis, and Crop Health Analysis pages.
+One table, `analyses`, stores completed crop health analyses saved from the
+Crop Health Analysis page.
 
 Functions
 ---------

@@ -235,8 +235,7 @@ def _render_delete_control(row_id: int) -> None:
 def _render_recommendation(raw: str | None) -> None:
     """Recommendation is stored as JSON from src.recommendation_engine when
     saved from the Crop Health Analysis page; render it structured if so,
-    otherwise fall back to showing the raw text as-is (e.g. older/plain
-    saves from the Disease Detection page).
+    otherwise fall back to showing the raw text as-is for older/plain saves.
     """
     if not raw:
         st.caption("No recommendation recorded.")

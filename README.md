@@ -43,7 +43,7 @@ with Streamlit that brings together two independent machine learning
 models — a **deep learning image classifier** for leaf disease detection
 and a **classical ML classifier** for environmental risk — and fuses their
 outputs through a custom, explainable scoring engine into one overall crop
-health assessment. Every analysis a user runs can be saved to a local
+health assessment. Completed Crop Health Analysis results can be saved to a local
 SQLite database, browsed later in a filterable history, and summarized on
 a live statistics dashboard.
 
@@ -82,7 +82,7 @@ for an accessible tool that:
    single 0–100 health score with a clear textual rationale.
 4. Build a rule-based recommendation engine (no external APIs or LLMs)
    that produces specific, traceable agricultural advice.
-5. Persist every analysis to a relational database and provide a
+5. Persist completed crop health assessments to a relational database and provide a
    dashboard and searchable history.
 6. Deliver all of the above through a single, cohesive, professionally
    styled Streamlit interface suitable for a live demonstration.
@@ -102,12 +102,12 @@ for an accessible tool that:
   bands, with a plain-language explanation of how the score was reached.
 - **Rule-Based Recommendations** — a deterministic engine (no ML, no
   external API) producing prioritized, explainable action items.
-- **Persistent Storage** — save any complete analysis to SQLite with one
+- **Persistent Storage** — save completed Crop Health Analysis results to SQLite with one
   click; duplicate-save protection across Streamlit reruns.
 - **Dashboard** — live KPIs (total analyses, healthy/diseased counts,
   average health score, high-risk cases) and four Plotly charts, all
   computed from real saved data.
-- **Analysis History** — filter by crop/disease/date, sort by any column,
+- **Analysis History** — review saved Crop Health Analysis results; filter by crop/disease/date, sort by any column,
   inspect full detail per record, and delete records (two-step confirm).
 - **Centralized validation & error handling** — every user input is
   validated with clear messages; unexpected errors are logged server-side
@@ -432,12 +432,14 @@ Environmental Analysis, Crop Health Analysis, Analysis History, and About.
    showing which readings are out of range.
 2. Open **Disease Detection**, upload a photo of an affected leaf, and
    click **Analyze** — the CNN returns a prediction (e.g. *"Late_Blight,
-   91% confidence, High severity"*) with a recommendation.
+  91% confidence, High severity"*) with a recommendation. This page does
+  not save records to the database.
 3. Open **Crop Health Analysis**, select the same crop/disease/severity/
    readings, and click **Calculate crop health** — the engine blends both
    signals into one score (e.g. **13/100 — Critical**) with a full
    explanation and a prioritized, rule-based action list.
-4. Click **Save Analysis** to persist the record.
+4. Click **Save Analysis** on the Crop Health Analysis page to persist the
+  complete record.
 5. Open **Analysis History** to filter, sort, inspect, or delete saved
    records, or **Dashboard** to see it reflected in the live statistics.
 

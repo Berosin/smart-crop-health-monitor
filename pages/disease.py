@@ -13,7 +13,7 @@ import streamlit as st
 import tensorflow as tf
 
 from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, MODEL_PATH, LABELS_PATH
-from src.errors import safe_action, PredictionError, logger
+from src.errors import PredictionError, logger
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 from utils.ui import (
     page_header,
@@ -357,30 +357,9 @@ def _render_result(pred: dict) -> None:
         unsafe_allow_html=True,
     )
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("Save analysis", use_container_width=True):
-            _save_analysis(pred)
-    with col_b:
-        if st.button("Re-run", use_container_width=True):
-            st.session_state["_disease_pred"] = None
-            st.rerun()
-
-
-def _save_analysis(pred: dict) -> None:
-    """Save analysis to SQLite database."""
-    with safe_action("Saving analysis"):
-        from src.db import insert_analysis
-        analysis_id = insert_analysis({
-            "crop_name": "Unknown",  # Model doesn't predict crop type
-            "disease": pred["disease"],
-            "confidence": pred["confidence"],
-            "severity": pred["severity"],
-            "health_score": int(pred["confidence"] * 100) if pred["is_healthy"] else int((1 - pred["confidence"]) * 100),
-            "disease_risk": pred["severity"],
-            "recommendation": pred["recommendation"],
-        })
-        st.success(f"Analysis saved to database (ID: {analysis_id})")
+    if st.button("Re-run", use_container_width=True):
+        st.session_state["_disease_pred"] = None
+        st.rerun()
 
 
 if __name__ == "__main__":
