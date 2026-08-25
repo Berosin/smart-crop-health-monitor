@@ -9,6 +9,7 @@ are saved from the "Save Analysis" button on the Crop Health Analysis page.
 from __future__ import annotations
 
 import json
+from html import escape
 
 import pandas as pd
 import streamlit as st
@@ -74,11 +75,11 @@ def render() -> None:
     f1, f2, f3, f4 = st.columns([1.2, 1.2, 1.4, 1.2])
 
     with f1:
-        crop_filter = st.multiselect("Crop", sorted(df["crop"].unique()),
-                                     default=sorted(df["crop"].unique()))
+        crop_options = ["All"] + sorted(df["crop"].unique())
+        crop_filter = st.multiselect("Crop", crop_options, default=["All"])
     with f2:
-        disease_filter = st.multiselect("Disease", sorted(df["disease"].dropna().unique()),
-                                        default=sorted(df["disease"].dropna().unique()))
+        disease_options = ["All"] + sorted(df["disease"].dropna().unique())
+        disease_filter = st.multiselect("Disease", disease_options, default=["All"])
     with f3:
         min_date, max_date = df["_dt"].min().date(), df["_dt"].max().date()
         date_range = st.date_input("Date range", value=(min_date, max_date),
@@ -86,7 +87,9 @@ def render() -> None:
     with f4:
         sort_choice = st.selectbox("Sort by", list(SORT_OPTIONS.keys()))
 
-    mask = df["crop"].isin(crop_filter) & df["disease"].isin(disease_filter)
+    crop_matches = "All" in crop_filter or df["crop"].isin(crop_filter)
+    disease_matches = "All" in disease_filter or df["disease"].isin(disease_filter)
+    mask = crop_matches & disease_matches
 
     if isinstance(date_range, tuple) and len(date_range) == 2:
         start, end = date_range
@@ -182,26 +185,48 @@ def _render_record(row: pd.Series) -> None:
     label = f"#{row_id} · {row['crop']} · {row['disease']} · {row['date']}"
 
     with st.expander(label):
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Crop", row["crop"])
-        c2.metric("Status", row["status"])
-        c3.metric("Health score", int(row["health_score"]))
-        c4.metric("Date", row["date"])
+        c1, c2 = st.columns(2)
+        with c1:
+            _history_metric("Crop", row["crop"])
+        with c2:
+            _history_metric("Status", row["status"])
+
+        c3, c4 = st.columns(2)
+        with c3:
+            _history_metric("Health score", int(row["health_score"]))
+        with c4:
+            _history_metric("Date", row["date"])
 
         d1, d2, d3 = st.columns(3)
-        d1.metric("Disease", row["disease"] or "—")
-        d2.metric("Confidence", f"{row['confidence']:.0f}%" if pd.notna(row["confidence"]) else "—")
-        d3.metric("Severity", row["severity"] or "—")
+        with d1:
+            _history_metric("Disease", row["disease"] or "—")
+        with d2:
+            _history_metric("Confidence", f"{row['confidence']:.0f}%" if pd.notna(row["confidence"]) else "—")
+        with d3:
+            _history_metric("Severity", row["severity"] or "—")
 
         r1, r2 = st.columns(2)
-        r1.metric("Disease risk", row["disease_risk"] or "—")
-        r2.metric("Environmental risk", row["environmental_risk"] or "—")
+        with r1:
+            _history_metric("Disease risk", row["disease_risk"] or "—")
+        with r2:
+            _history_metric("Environmental risk", row["environmental_risk"] or "—")
 
         st.markdown("**Recommendation**")
         _render_recommendation(row["recommendation"])
 
         st.markdown("---")
         _render_delete_control(row_id)
+
+
+def _history_metric(label: str, value: object) -> None:
+    """Render a compact, wrapping value for the expanded history view."""
+    st.markdown(
+        f"<div class='metric-tile history-metric'>"
+        f"<div class='label'>{escape(str(label))}</div>"
+        f"<div class='value'>{escape(str(value))}</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_delete_control(row_id: int) -> None:

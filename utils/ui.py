@@ -144,6 +144,9 @@ def inject_custom_css() -> None:
         .metric-tile .label { font-size: .74rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
         .metric-tile .value { font-family: var(--font-mono); font-size: 1.55rem; font-weight: 600; color: var(--ink); margin-top: .25rem; }
         .metric-tile .delta { font-size: .78rem; margin-top: .2rem; color: var(--text-faint); }
+        .history-metric .value {
+            font-size: 1.3rem; line-height: 1.2; overflow-wrap: anywhere;
+        }
 
         /* ---------------------------------------------------------------
            Info / callout box
