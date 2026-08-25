@@ -1,18 +1,19 @@
 """Reusable Streamlit UI components and agriculture-themed styling.
 
 This module centralises the look-and-feel so every page renders as one
-coherent system. It also exposes dummy data generators used by the layout
-while the real AI and database layers are not yet implemented.
+coherent system: the CSS design system, page chrome (header, sidebar,
+footer), and small display components (metric tiles, risk badges, the
+health-score card) shared across pages. A couple of dummy-data generators
+remain for widget default values (e.g. pre-filling the environmental
+readings form) — everything else in the app reads from the real trained
+models and the SQLite database.
 """
 
 from __future__ import annotations
 
-from typing import Callable
-
-import plotly.graph_objects as go
 import streamlit as st
 
-from config import APP_CONFIG, ENV_RANGES
+from config import APP_CONFIG
 from utils.icons import icon_html, icon_pil
 
 # Shared Plotly theming so every chart sits visually inside the same
@@ -168,7 +169,7 @@ def inject_custom_css() -> None:
         }
 
         /* ---------------------------------------------------------------
-        Sidebar
+           Sidebar
         --------------------------------------------------------------- */
         section[data-testid="stSidebar"] {
             background: var(--paper-deep);
@@ -182,8 +183,8 @@ def inject_custom_css() -> None:
         .sidebar-sub { font-size: .8rem; color: var(--soil); margin-top: .1rem; }
 
         /* Sidebar nav buttons — quiet/ghost when inactive, filled when the
-            current page, giving a clear "you are here" state (a plain
-            st.radio only shows a small selected dot, easy to miss). */
+           current page, giving a clear "you are here" state (a plain
+           st.radio only shows a small selected dot, easy to miss). */
         section[data-testid="stSidebar"] .stButton > button {
             text-align: left;
             justify-content: flex-start;
@@ -263,7 +264,7 @@ def inject_custom_css() -> None:
             text-transform: uppercase; letter-spacing: .04em; margin-bottom:.15rem }
 
         /* ---------------------------------------------------------------
-        Native widget refinements (buttons, tabs, expander)
+           Native widget refinements (buttons, tabs, expander)
         --------------------------------------------------------------- */
         .stButton > button, .stDownloadButton > button {
             border-radius: 8px; font-weight: 600; font-family: var(--font-body);
@@ -290,9 +291,9 @@ def inject_custom_css() -> None:
         [data-testid="stMetricLabel"] { font-family: var(--font-body); color: var(--text-muted); }
 
         /* ---------------------------------------------------------------
-        Status messages (error / warning / success / info) — keep
-        Streamlit's universally-understood semantic colors, but bring
-        shape/type into the same card system as the rest of the app.
+           Status messages (error / warning / success / info) — keep
+           Streamlit's universally-understood semantic colors, but bring
+           shape/type into the same card system as the rest of the app.
         --------------------------------------------------------------- */
         [data-testid="stAlert"] {
             border-radius: var(--radius);
@@ -303,7 +304,7 @@ def inject_custom_css() -> None:
         }
 
         /* ---------------------------------------------------------------
-        Loading states — keep the spinner text on-brand
+           Loading states — keep the spinner text on-brand
         --------------------------------------------------------------- */
         [data-testid="stSpinner"] {
             font-family: var(--font-body); color: var(--text-muted);
@@ -311,7 +312,7 @@ def inject_custom_css() -> None:
         }
 
         /* ---------------------------------------------------------------
-        Tables
+           Tables
         --------------------------------------------------------------- */
         [data-testid="stDataFrame"] {
             border-radius: var(--radius); overflow: hidden;
@@ -319,7 +320,7 @@ def inject_custom_css() -> None:
         }
 
         /* ---------------------------------------------------------------
-        Images — uploaded/preview photos get the same card treatment
+           Images — uploaded/preview photos get the same card treatment
         --------------------------------------------------------------- */
         [data-testid="stImage"] img {
             border-radius: var(--radius);
@@ -328,7 +329,7 @@ def inject_custom_css() -> None:
         }
 
         /* ---------------------------------------------------------------
-        Form inputs — consistent corner radius across widget types
+           Form inputs — consistent corner radius across widget types
         --------------------------------------------------------------- */
         .stTextInput input, .stNumberInput input,
         .stSelectbox div[data-baseweb="select"] > div,
@@ -338,7 +339,7 @@ def inject_custom_css() -> None:
         }
 
         /* ---------------------------------------------------------------
-        Section dividers — quiet hairline instead of the browser default
+           Section dividers — quiet hairline instead of the browser default
         --------------------------------------------------------------- */
         hr {
             border: none; border-top: 1px solid var(--line);
@@ -528,27 +529,6 @@ def metric_display(label: str, value: str, sub: str | None = None,
     )
 
 
-def recommendation_display(recommendations: list[tuple[str, str]],
-                           title: str = "Recommendation") -> None:
-    """Render a list of (icon, text) recommendations as themed items.
-
-    `icon` is a semantic key from utils.icons.ICONS, rendered as a
-    Tabler Icon rather than an emoji.
-    """
-    if not recommendations:
-        return
-    items = ""
-    for icon, text in recommendations:
-        icon_tag = icon_html(icon, size=20, margin_right="0")
-        items += (
-            f"<div class='rec-item'>"
-            f"<div class='rec-icon'>{icon_tag}</div>"
-            f"<div><div class='rec-title'>{title}</div>"
-            f"<div class='rec-text'>{text}</div></div></div>"
-        )
-    st.markdown(items, unsafe_allow_html=True)
-
-
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
@@ -604,22 +584,6 @@ def render_sidebar() -> str:
 # ---------------------------------------------------------------------------
 # Dummy data (layout scaffolding only — no AI / DB yet)
 # ---------------------------------------------------------------------------
-def get_dummy_diseases() -> list[dict]:
-    """Placeholder disease catalog used by the detection page."""
-    return [
-        {"name": "Tomato Early Blight", "confidence": 0.0, "severity": "—",
-         "crop": "Tomato", "color": "#CE8C82"},
-        {"name": "Tomato Leaf Mold",     "confidence": 0.0, "severity": "—",
-         "crop": "Tomato", "color": "#8D74A6"},
-        {"name": "Corn Common Rust",     "confidence": 0.0, "severity": "—",
-         "crop": "Corn",   "color": "#CB8A5C"},
-        {"name": "Potato Late Blight",    "confidence": 0.0, "severity": "—",
-         "crop": "Potato", "color": "#B6708E"},
-        {"name": "Healthy",               "confidence": 0.0, "severity": "—",
-         "crop": "Various", "color": "#7FA687"},
-    ]
-
-
 def get_dummy_env_readings() -> dict:
     """Placeholder environmental readings in the configured units."""
     return {
@@ -632,7 +596,6 @@ def get_dummy_env_readings() -> dict:
 
 def get_dummy_history(n: int = 8) -> list[dict]:
     """Placeholder analysis history records for the dashboard/history pages."""
-    import itertools
     crops = ["Tomato", "Corn", "Potato", "Rice", "Wheat"]
     statuses = ["Healthy", "Early Blight", "Leaf Mold", "Rust"]
     scores = [88, 72, 64, 45, 91, 58, 76, 50]
@@ -652,66 +615,3 @@ def get_dummy_history(n: int = 8) -> list[dict]:
             "rainfall": round((i % 4) * 1.5, 1),
         })
     return rows
-
-
-def env_status_bar(label: str, value: float, vmin: float, vmax: float, unit: str) -> None:
-    """Render a single environmental reading as a coloured progress bar."""
-    ratio = max(0.0, min(1.0, (value - vmin) / (vmax - vmin)))
-    pct = int(ratio * 100)
-    st.markdown(
-        f"""
-        <div style="margin-bottom:.7rem">
-          <div style="display:flex;justify-content:space-between;font-size:.85rem">
-            <span><b>{label}</b></span><span>{value} {unit}</span>
-          </div>
-          <div style="background:#E6E8DC;border-radius:6px;overflow:hidden;height:10px;margin-top:.25rem">
-            <div style="width:{pct}%;height:100%;background:linear-gradient(90deg,#7FA687,#2F6D46)"></div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def env_gauge(value: float, vmin: float, vmax: float, title: str, unit: str) -> go.Figure:
-    """A Plotly radial gauge for an environmental reading."""
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=value,
-        title={"text": f"<span style='font-size:13px;color:#23291F'>{title}</span>"},
-        number={"suffix": f" {unit}"},
-        gauge={
-            "axis": {"range": [vmin, vmax]},
-            "bar": {"color": "#2F6D46"},
-            "bgcolor": "white",
-            "borderwidth": 1,
-            "steps": [
-                {"range": [vmin, vmin + 0.33 * (vmax - vmin)], "color": "#EAEFE2"},
-                {"range": [vmin + 0.33 * (vmax - vmin), vmin + 0.66 * (vmax - vmin)], "color": "#D8E2CC"},
-                {"range": [vmin + 0.66 * (vmax - vmin), vmax], "color": "#BFD1B2"},
-            ],
-            "threshold": {
-                "line": {"color": "#C97A3B", "width": 3},
-                "thickness": 0.8,
-                "value": value,
-            },
-        },
-    ))
-    fig.update_layout(
-        height=230, margin=dict(t=40, b=10, l=20, r=20),
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, -apple-system, sans-serif", color="#23291F"),
-    )
-    return fig
-
-
-def render_env_readings(readings: dict) -> None:
-    """Convenience: render the four environmental gauges in a row."""
-    cols = st.columns(len(ENV_RANGES))
-    for col, (key, spec) in zip(cols, ENV_RANGES.items()):
-        with col:
-            st.plotly_chart(
-                env_gauge(readings[key], spec["min"], spec["max"],
-                          key.replace("_", " ").title(), spec["unit"]),
-                use_container_width=True,
-            )

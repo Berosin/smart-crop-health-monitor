@@ -9,7 +9,6 @@ are saved from the "Save Analysis" button on the Crop Health Analysis page.
 from __future__ import annotations
 
 import json
-from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -17,15 +16,13 @@ import streamlit as st
 from src.db import get_analyses, delete_analysis
 from src.errors import safe_action, DatabaseError, logger
 from src.health_engine import classify_health_status
+from src.recommendation_engine import CATEGORY_ICON, PRIORITY_COLOR
 from utils.ui import (
     page_header,
     callout,
     footer,
 )
 from utils.icons import icon_html
-
-CATEGORY_ICON = {"disease": "diseased", "environment": "temperature", "overall": "leaf"}
-PRIORITY_COLOR = {"high": "#B5564B", "medium": "#C97A3B", "low": "#7FA687"}
 
 SORT_OPTIONS = {
     "Date (newest first)":       ("_dt", False),

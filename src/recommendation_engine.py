@@ -142,6 +142,12 @@ HEALTH_SCORE_ADVICE: list[tuple[int, int, str, str]] = [
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 CATEGORY_ORDER = {"disease": 0, "environment": 1, "overall": 2}
 
+# Display metadata for rendering recommendations in the UI (shared by
+# pages/health.py and pages/history.py, so both render the same
+# category icon and priority color for a given recommendation).
+CATEGORY_ICON = {"disease": "diseased", "environment": "temperature", "overall": "leaf"}
+PRIORITY_COLOR = {"high": "#B5564B", "medium": "#C97A3B", "low": "#7FA687"}
+
 
 # ---------------------------------------------------------------------------
 # Small helpers

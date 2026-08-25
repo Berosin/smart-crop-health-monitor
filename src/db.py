@@ -23,7 +23,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Iterator
 
 from config import DB_PATH
 from src.errors import DatabaseError
@@ -83,13 +83,6 @@ def _connect(db_path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
         raise DatabaseError(f"Database operation failed: {e}") from e
     finally:
         conn.close()
-
-
-def _exists(conn: sqlite3.Connection, analysis_id: int) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM analyses WHERE id = ?", (analysis_id,)
-    ).fetchone()
-    return row is not None
 
 
 # ---------------------------------------------------------------------------
@@ -166,10 +159,3 @@ def delete_analysis(analysis_id: int, db_path: str = DB_PATH) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
-
-
-# ---------------------------------------------------------------------------
-# Convenience: convert a stored row into the {metric: value} shape the UI uses
-# ---------------------------------------------------------------------------
-def row_to_dict(row: sqlite3.Row | dict) -> dict:
-    return dict(row)

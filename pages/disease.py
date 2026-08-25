@@ -5,8 +5,6 @@ Uses the trained TensorFlow/Keras MobileNetV2 model for inference.
 
 from __future__ import annotations
 
-import io
-import time
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +13,7 @@ import streamlit as st
 import tensorflow as tf
 
 from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, MODEL_PATH, LABELS_PATH
-from src.errors import safe_action, PredictionError, DatabaseError, logger
+from src.errors import safe_action, PredictionError, logger
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 from utils.ui import (
     page_header,

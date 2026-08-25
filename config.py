@@ -39,11 +39,27 @@ CONFIDENCE_THRESHOLD = 0.70     # below this the model is treated as "unsure"
 # ---------------------------------------------------------------------------
 # Environmental condition ranges
 # ---------------------------------------------------------------------------
+# Single source of truth for the four environmental factors used throughout
+# the app: sensor bounds (min/max/unit), display metadata (icon key, label),
+# and the widget step size (nudge) for number_input sliders. Previously
+# duplicated as separate dicts in pages/environment.py and pages/health.py.
 ENV_RANGES = {
-    "temperature": {"min": -10, "max": 50, "unit": "°C"},    # air temperature
-    "humidity":    {"min": 0,   "max": 100, "unit": "%"},    # relative humidity
-    "soil_moisture": {"min": 0, "max": 100, "unit": "%"},    # soil water content
-    "rainfall":    {"min": 0,   "max": 500, "unit": "mm"},   # daily rainfall
+    "temperature": {
+        "min": -10, "max": 50, "unit": "°C",
+        "icon": "temperature", "label": "Temperature", "nudge": 2.0,
+    },
+    "humidity": {
+        "min": 0, "max": 100, "unit": "%",
+        "icon": "humidity", "label": "Humidity", "nudge": 5.0,
+    },
+    "soil_moisture": {
+        "min": 0, "max": 100, "unit": "%",
+        "icon": "soil", "label": "Soil moisture", "nudge": 5.0,
+    },
+    "rainfall": {
+        "min": 0, "max": 500, "unit": "mm",
+        "icon": "rainfall", "label": "Rainfall", "nudge": 2.0,
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -92,4 +108,3 @@ ENV_RISK_THRESHOLDS = {
     3: ("High",      "#B5564B"),
     4: ("Critical",  "#7C3730"),
 }
-

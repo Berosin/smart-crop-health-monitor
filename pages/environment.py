@@ -35,12 +35,10 @@ from utils.icons import icon_html
 
 CROPS = list(ENV_CROP_RANGES.keys())
 
-FACTOR_META = {
-    "temperature":   {"icon": "temperature", "label": "Temperature",   "nudge": 2.0},
-    "humidity":      {"icon": "humidity",    "label": "Humidity",      "nudge": 5.0},
-    "soil_moisture": {"icon": "soil",        "label": "Soil moisture", "nudge": 5.0},
-    "rainfall":      {"icon": "rainfall",    "label": "Rainfall",      "nudge": 2.0},
-}
+# Per-factor icon/label/unit/step metadata lives in config.ENV_RANGES (single
+# source of truth, also used by pages/health.py) — kept as a local alias here
+# so the rest of this file doesn't need to change.
+FACTOR_META = ENV_RANGES
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +103,6 @@ def render() -> None:
             with st.spinner("Assessing environmental risk…"):
                 results = _assess(crop, inputs)
             st.session_state["_env_results"] = results
-            st.session_state["_env_crop"] = crop
         except FileNotFoundError:
             callout(
                 f"{icon_html('warning', size=18)}<b>Environmental risk model not found.</b> "

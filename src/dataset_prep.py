@@ -25,7 +25,6 @@ Or any flat structure where a CSV maps filenames to labels.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -410,7 +409,6 @@ def visualize_batch(dataset: tf.data.Dataset, class_names: list[str], num_images
 if __name__ == "__main__":
     # Quick self-test with synthetic data (no real images needed)
     import tempfile
-    import shutil
 
     print("=== Self-test: dataset_prep.py ===")
 

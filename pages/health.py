@@ -33,7 +33,7 @@ from src.db import insert_analysis
 from src.environment_model import predict_environmental_risk
 from src.errors import safe_action, logger
 from src.health_engine import analyze_crop_health
-from src.recommendation_engine import generate_recommendations
+from src.recommendation_engine import generate_recommendations, CATEGORY_ICON, PRIORITY_COLOR
 from src.validation import (
     validate_crop,
     validate_confidence,
@@ -57,17 +57,9 @@ from utils.icons import icon_html
 
 CROPS = list(ENV_CROP_RANGES.keys())
 
-ENV_LABELS = {
-    "temperature":   ("temperature", "Temperature",   "°C"),
-    "humidity":      ("humidity",    "Humidity",      "%"),
-    "soil_moisture": ("soil",        "Soil moisture", "%"),
-    "rainfall":      ("rainfall",    "Rainfall",      "mm"),
-}
-
-# Recommendation-engine category -> icon key.
-CATEGORY_ICON = {"disease": "diseased", "environment": "temperature", "overall": "leaf"}
-# Recommendation-engine priority -> badge color (matches the app's severity palette).
-PRIORITY_COLOR = {"high": "#B5564B", "medium": "#C97A3B", "low": "#7FA687"}
+# Per-factor icon/label/unit metadata lives in config.ENV_RANGES (single
+# source of truth, also used by pages/environment.py).
+ENV_LABELS = ENV_RANGES
 
 
 # ---------------------------------------------------------------------------
@@ -105,14 +97,13 @@ def render() -> None:
             cols = st.columns(2)
             for col, key in zip(cols * 2, ENV_LABELS):
                 with col:
-                    _icon, label, unit = ENV_LABELS[key]
                     spec = ENV_RANGES[key]
                     env[key] = st.number_input(
-                        f"{label} ({unit})",
+                        f"{spec['label']} ({spec['unit']})",
                         min_value=float(spec["min"]),
                         max_value=float(spec["max"]),
                         value=float(env[key]),
-                        step=2.0 if key in ("temperature", "rainfall") else 5.0,
+                        step=spec["nudge"],
                         format="%.1f",
                     )
 
@@ -279,9 +270,9 @@ def _render(results: dict) -> None:
     e1, e2, e3, e4 = st.columns(4)
     env_keys = ["temperature", "humidity", "soil_moisture", "rainfall"]
     for col, key in zip([e1, e2, e3, e4], env_keys):
-        _icon, label, unit = ENV_LABELS[key]
+        spec = ENV_LABELS[key]
         with col:
-            metric_display(label, f"{r['env'][key]} {unit}")
+            metric_display(spec["label"], f"{r['env'][key]} {spec['unit']}")
 
     # --- Explanation ------------------------------------------------
     st.markdown("#### Why this score?")
@@ -379,7 +370,6 @@ def _render_recommendations(rule_based: dict) -> None:
 
 if __name__ == "__main__":
     # Standalone entry: minimal Streamlit bootstrap for direct viewing.
-    import streamlit as st  # noqa: F811
     st.set_page_config(page_title="Crop Health Analysis", layout="wide")
     from utils.ui import inject_custom_css, render_sidebar
     inject_custom_css()

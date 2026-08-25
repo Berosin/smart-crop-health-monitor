@@ -2,11 +2,14 @@
 streamlit>=1.32.0
 
 # Deep Learning (disease detection model)
+# TensorFlow >=2.15 bundles Keras internally (tf.keras) — no separate
+# `keras` package needed, and pinning one risks pulling in Keras 3.x,
+# which is not compatible with the tf.keras-style API used here.
 tensorflow>=2.15.0
-keras>=2.15.0
 
 # Classical ML (supplementary scoring / recommendations)
 scikit-learn>=1.4.0
+joblib>=1.3.0    # model persistence for src/environment_model.py (also a scikit-learn dependency)
 
 # Image processing
 opencv-python-headless>=4.9.0

@@ -15,7 +15,6 @@ This module implements:
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +29,6 @@ from src.dataset_prep import (
     prepare_datasets,
     save_label_map,
     load_label_map,
-    decode_labels,
 )
 
 # ---------------------------------------------------------------------------
@@ -169,7 +167,7 @@ def train_head(
     base_model.trainable = False
     compile_model(model, learning_rate)
     print(f"\n{'='*60}")
-    print(f"PHASE 1: Training head only (base frozen)")
+    print("PHASE 1: Training head only (base frozen)")
     print(f"Epochs: {epochs}, LR: {learning_rate}")
     print(f"{'='*60}\n")
     return model.fit(
