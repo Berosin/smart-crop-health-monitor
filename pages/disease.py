@@ -229,6 +229,9 @@ def render() -> None:
             disabled=(uploaded is None),
         )
 
+    if uploaded is None:
+        st.session_state.pop("_disease_pred", None)
+
     # ----------------------------------------------------------------- results
     with col_result:
         st.markdown("#### 2 · Prediction result")
