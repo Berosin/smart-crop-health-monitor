@@ -41,12 +41,12 @@ TRAIN_CONFIG = {
     "batch_size": 32,
     "val_split": 0.15,
     "test_split": 0.15,
-    "epochs_head": 15,        # Phase 1: train head only (base frozen)
-    "epochs_fine": 10,        # Phase 2: fine-tune top layers
+    "epochs_head": 30,        # Increased to 30 for solid convergence
+    "epochs_fine": 20,        # Increased to 20 for thorough fine-tuning
     "learning_rate_head": 1e-3,
     "learning_rate_fine": 1e-5,
-    "fine_tune_at": 100,      # Unfreeze layers from this index onward
-    "early_stopping_patience": 5,
+    "fine_tune_at": 100,      
+    "early_stopping_patience": 7, # Increased patience to prevent premature stopping,
     "reduce_lr_patience": 3,
     "reduce_lr_factor": 0.2,
     "seed": 42,
@@ -55,12 +55,12 @@ TRAIN_CONFIG = {
 AUGMENTATION_CONFIG = {
     "horizontal_flip": True,
     "vertical_flip": False,
-    "rotation_factor": 0.15,
-    "zoom_factor": 0.15,
-    "height_factor": 0.1,
-    "width_factor": 0.1,
-    "brightness_factor": 0.2,
-    "contrast_factor": 0.1,
+    "rotation_factor": 0.05,        # Toned down distortion
+    "zoom_factor": 0.05,            # Toned down distortion
+    "height_factor": 0.02,
+    "width_factor": 0.02,
+    "brightness_factor": 0.05,
+    "contrast_factor": 0.05,
     "fill_mode": "reflect",
     "seed": 42,
 }
@@ -236,13 +236,18 @@ def evaluate_model(
 
     # Metrics
     test_loss, test_acc = model.evaluate(test_ds, verbose=0)
-    report = classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
+    
+    # Safely align labels and names present in y_true to prevent mismatch crashes
+    unique_labels = np.unique(y_true)
+    dynamic_names = [class_names[i] for i in unique_labels]
+    
+    report = classification_report(y_true, y_pred, labels=unique_labels, target_names=dynamic_names, output_dict=True)
     cm = confusion_matrix(y_true, y_pred)
 
     print(f"\nTest Accuracy: {test_acc:.4f}")
     print(f"Test Loss: {test_loss:.4f}")
     print("\nClassification Report:")
-    print(classification_report(y_true, y_pred, target_names=class_names))
+    print(classification_report(y_true, y_pred, labels=unique_labels, target_names=dynamic_names))
 
     # Save metrics
     metrics = {
