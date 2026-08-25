@@ -2,6 +2,10 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
 
 # Virtual environments
 .venv/
@@ -11,7 +15,7 @@ env/
 # Streamlit
 .streamlit/secrets.toml
 
-# Data / runtime artifacts (do not commit user uploads or DB)
+# Data / runtime artifacts (do not commit user uploads, DB, or generated data)
 database/*.db
 database/*.sqlite*
 data/uploads/*
@@ -22,17 +26,31 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# Model weights / labels (large, regenerable) — matches nested model dirs too
+# Trained model artifacts and generated evaluation output.
+# Model weights should be distributed through Git LFS, a release asset, or
+# external model storage rather than committed to the normal repository.
+models/**
+!models/.gitkeep
+!models/disease_labels.json
+!models/environment_model/
+!models/environment_model/metadata.json
 models/**/*.h5
 models/**/*.keras
 models/**/*.pkl
 models/**/*.joblib
-models/**/*.json
-!models/.gitkeep
+models/**/saved_model/
+models/**/logs/
+models/**/*.png
+
+# Local environment and generated reports
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
 
 # OS / IDE
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
-*.log

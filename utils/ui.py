@@ -11,6 +11,8 @@ models and the SQLite database.
 
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 from config import APP_CONFIG
@@ -398,6 +400,7 @@ def metric_tile(label: str, value: str, delta: str | None = None) -> None:
 
 
 def callout(text: str) -> None:
+    text = _render_inline_markdown(text)
     st.markdown(f'<div class="callout">{text}</div>', unsafe_allow_html=True)
 
 
@@ -405,10 +408,15 @@ def card(title: str | None = None, body: str | None = None) -> None:
     """A simple bordered card container."""
     inner = ""
     if title:
-        inner += f"<h4 style='margin-top:0;color:var(--ink)'>{title}</h4>"
+        inner += f"<h4 style='margin-top:0;color:var(--ink)'>{_render_inline_markdown(title)}</h4>"
     if body:
-        inner += f"<div>{body}</div>"
+        inner += f"<div>{_render_inline_markdown(body)}</div>"
     st.markdown(f'<div class="card">{inner}</div>', unsafe_allow_html=True)
+
+
+def _render_inline_markdown(text: str) -> str:
+    """Render the small bold-markdown subset used in HTML UI components."""
+    return re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
 
 
 def footer() -> None:

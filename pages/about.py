@@ -1,10 +1,12 @@
-"""About Project page — overview, tech stack, and roadmap."""
+"""About Project page — overview, current capabilities, and model scope."""
 
 from __future__ import annotations
 
+import json
+
 import streamlit as st
 
-from config import APP_CONFIG
+from config import APP_CONFIG, LABELS_PATH
 from utils.ui import page_header, card, callout, footer
 from utils.icons import icon_html
 
@@ -14,26 +16,24 @@ def render() -> None:
 
     st.markdown(
         """
-        The **AI-Based Smart Crop Health Monitoring and Early Disease
-        Detection System** is a *software-only* platform that helps farmers
-        and agriculturalists monitor crop health and detect plant diseases
-        early — combining deep-learning image analysis with environmental
-        data. **No hardware** (no Arduino, ESP32, Raspberry Pi, sensors,
-        cameras, or IoT devices) is involved.
+        **Smart Crop Health Monitoring** is a software-only Streamlit
+        application for checking tomato crop health. It combines trained
+        image classification, environmental risk analysis, an explainable
+        health score, and practical agricultural recommendations in one
+        workflow. No sensors or IoT hardware are required.
         """
     )
 
-    st.markdown("#### What the system does")
+    st.markdown("#### Current workflow")
     steps = [
-        ("1", "Accept crop leaf images", "User uploads a clear leaf photo."),
-        ("2", "Detect diseases with AI", "A deep-learning model scores each disease class."),
-        ("3", "Show confidence & severity", "Detection confidence and severity are reported."),
-        ("4", "Accept environmental conditions", "Temperature, humidity, soil moisture, rainfall."),
-        ("5", "Analyze crop / environmental health", "Combined signal from image + environment."),
-        ("6", "Calculate overall health score", "One transparent score out of 100."),
-        ("7", "Provide recommendations", "Actionable agricultural guidance."),
-        ("8", "Store analysis history", "Every analysis is saved in SQLite."),
-        ("9", "Dashboard statistics & charts", "Trends visualized with Plotly."),
+        ("1", "Upload a tomato leaf image", "Submit a clear JPG or PNG image for analysis."),
+        ("2", "Classify the leaf", "The trained model recognizes Healthy, Early Blight, or Late Blight."),
+        ("3", "Review confidence", "The prediction includes class probabilities and confidence."),
+        ("4", "Enter environmental readings", "Provide temperature, humidity, soil moisture, and rainfall."),
+        ("5", "Assess environmental risk", "The trained environmental model classifies the current conditions."),
+        ("6", "Calculate crop health", "Disease and environmental signals become one explainable score out of 100."),
+        ("7", "Review recommendations", "Severity-aware, crop-specific actions explain what to do next."),
+        ("8", "Save and review analyses", "Save completed assessments to SQLite and inspect them in History and Dashboard."),
     ]
     for n, title, desc in steps:
         st.markdown(
@@ -55,7 +55,7 @@ def render() -> None:
 
     st.markdown("---")
 
-    st.markdown("#### Tech stack")
+    st.markdown("#### Technology")
     stack = [
         ("Frontend / UI", "Streamlit"),
         ("Programming", "Python"),
@@ -73,21 +73,23 @@ def render() -> None:
 
     st.markdown("---")
 
-    st.markdown("#### Project status")
-    done, todo = st.columns([1, 1])
-    with done:
-        st.markdown("**Completed**")
-        for t in ["Project structure", "Streamlit layout + navigation",
-                  "Agriculture-themed UI", "Reusable UI functions",
-                  "Dummy data for all pages"]:
-            st.markdown(f"{icon_html('success', size=16)}{t}", unsafe_allow_html=True)
-    with todo:
-        st.markdown("**Not yet implemented**")
-        for t in ["AI disease detection model", "SQLite persistence layer",
-                  "Real health-score logic", "Recommendation engine",
-                  "Dashboard wired to live data"]:
-            st.markdown(f"{icon_html('error', size=16, color='#B7BDAA')}{t}", unsafe_allow_html=True)
+    st.markdown("#### Current model scope")
+    with open(LABELS_PATH, "r", encoding="utf-8") as labels_file:
+        label_map = json.load(labels_file)
+    disease_classes = [
+        name.replace("_", " ")
+        for name, _ in sorted(label_map.items(), key=lambda item: item[1])
+    ]
+    scope_cols = st.columns(3)
+    with scope_cols[0]:
+        card("Supported crop", "<b>Tomato</b>")
+    with scope_cols[1]:
+        card("Disease classes", f"<b>{', '.join(disease_classes)}</b>")
+    with scope_cols[2]:
+        card("Health result", "<b>0-100 score + risk breakdown</b>")
 
-    callout(f"{icon_html('info', size=18)}This is a layout-only build. AI and "
-            "database functionality are intentionally deferred.")
+    callout(
+        f"{icon_html('info', size=18)}The disease model is currently trained for tomato leaves only. "
+        "Additional crops can be added after their own labeled data and model classes are trained."
+    )
     footer()

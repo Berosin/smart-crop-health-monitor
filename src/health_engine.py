@@ -43,7 +43,7 @@ from src.environment_model import NUMERIC_COLUMNS, TIPS
 WEIGHTS = {"disease": 0.55, "environmental": 0.45}
 
 # Disease severity -> how much it drags the disease score down (0 = none).
-SEVERITY_WEIGHTS = {"None": 0.0, "Mild": 0.3, "Moderate": 0.6, "High": 0.9}
+SEVERITY_WEIGHTS = {"None": 0.0, "Moderate": 0.6, "High": 0.9}
 
 # Fallback disease advice, used only when the caller doesn't supply its own
 # disease_recommendation (e.g. from pages/disease.py's RECOMMENDATION_MAP).
@@ -275,7 +275,7 @@ def analyze_crop_health(
     Args:
         disease_prediction: predicted disease name (or "Healthy").
         disease_confidence: model confidence for that prediction, 0..1.
-        disease_severity: "None" | "Mild" | "Moderate" | "High".
+        disease_severity: "None" | "Moderate" | "High".
         environmental_risk: "Optimal" | "Low" | "Moderate" | "High" | "Critical"
             (the risk_level already produced by
             src.environment_model.predict_environmental_risk()).

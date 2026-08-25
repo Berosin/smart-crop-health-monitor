@@ -18,7 +18,6 @@ from utils.ui import (
     footer,
     render_sidebar,
     callout,
-    get_dummy_history,
 )
 from utils.icons import icon_html
 
@@ -41,8 +40,9 @@ def render_home() -> None:
 
     # Intro
     callout(
-        "**Software-only build** · no sensors, cameras, or IoT devices. "
-        "AI and database layers are not yet implemented."
+        "**Tomato health workflow** · upload a leaf image, review the trained "
+        "disease prediction, enter environmental readings, and calculate an "
+        "explainable health score."
     )
     st.markdown(
         """
@@ -54,11 +54,11 @@ def render_home() -> None:
 
     st.markdown("### What you can do here")
     feats = [
-        ("disease", "Detect diseases", "Upload a leaf image; the AI flags diseases with confidence and severity."),
+        ("disease", "Detect diseases", "Upload a tomato leaf image; the trained model reports disease, confidence, and severity."),
         ("environment", "Track conditions", "Log temperature, humidity, soil moisture and rainfall."),
         ("health", "Score crop health", "Combine the image and environmental signals into one health score."),
         ("dashboard", "Visualize trends", "See stats and charts across all your past analyses."),
-        ("history", "Keep history", "Every analysis is stored so you can review it later."),
+        ("history", "Keep history", "Save completed analyses and review them later."),
     ]
     cols = st.columns(len(feats))
     for col, (icon, title, desc) in zip(cols, feats):
@@ -84,16 +84,16 @@ def render_home() -> None:
         """
     )
 
-    st.markdown("### At a glance")
+    st.markdown("### Current coverage")
     glances = st.columns(4)
     with glances[0]:
         st.metric("Modules", "6")
     with glances[1]:
-        st.metric("Crops tracked", "5")
+        st.metric("Supported crops", "1")
     with glances[2]:
-        st.metric("Disease classes", "4")
+        st.metric("Disease classes", "3")
     with glances[3]:
-        st.metric("Analyses (demo)", len(get_dummy_history()))
+        st.metric("Analysis storage", "SQLite")
 
     footer()
 

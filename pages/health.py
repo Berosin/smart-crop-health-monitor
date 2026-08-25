@@ -26,8 +26,8 @@ import uuid
 import streamlit as st
 
 from config import (
-    ENV_CROP_RANGES,
     ENV_RANGES,
+    LABELS_PATH,
 )
 from src.db import insert_analysis
 from src.environment_model import predict_environmental_risk
@@ -55,7 +55,17 @@ from utils.ui import (
 )
 from utils.icons import icon_html
 
-CROPS = list(ENV_CROP_RANGES.keys())
+CROPS = ["Tomato"]
+
+
+def _load_disease_classes() -> list[str]:
+    """Return disease classes in the same order as the trained model."""
+    with open(LABELS_PATH, "r", encoding="utf-8") as labels_file:
+        label_map = json.load(labels_file)
+    return [name for name, _ in sorted(label_map.items(), key=lambda item: item[1])]
+
+
+DISEASE_CLASSES = _load_disease_classes()
 
 # Per-factor icon/label/unit metadata lives in config.ENV_RANGES (single
 # source of truth, also used by pages/environment.py).
@@ -80,15 +90,27 @@ def render() -> None:
 
         with st.expander("Disease result", expanded=True):
             crop = st.selectbox("Crop name", CROPS, index=0)
+            disease_labels = {
+                disease: disease.replace("_", " ")
+                for disease in DISEASE_CLASSES
+            }
             disease = st.selectbox(
                 "Detected disease",
-                ["Healthy", "Tomato Early Blight", "Tomato Leaf Mold",
-                 "Corn Common Rust", "Potato Late Blight"],
+                DISEASE_CLASSES,
+                format_func=disease_labels.get,
                 index=1,
             )
-            confidence = st.slider("Disease confidence", 0.0, 1.0, 0.82, 0.05)
+            confidence = st.number_input(
+                "Disease confidence",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.82,
+                step=0.01,
+                format="%.2f",
+                help="Use the plus and minus buttons to change confidence by 1%.",
+            )
             severity = st.select_slider(
-                "Disease severity", options=["None", "Mild", "Moderate", "High"],
+                "Disease severity", options=["None", "Moderate", "High"],
                 value="Moderate",
             )
 

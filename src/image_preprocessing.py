@@ -1,10 +1,15 @@
 """OpenCV-based leaf image preprocessing pipeline.
 
-Turns raw uploaded image bytes into the exact tensor the trained disease
-model expects — same shape, dtype, and value range as before
-(224x224x3, float32, scaled to [-1, 1] for MobileNetV2) — without touching
-the model itself. Only *how* we get there changes: validation, decoding,
-and every transform now go through OpenCV instead of tf.io.
+Turns raw uploaded image bytes into the tensor the trained disease model
+expects (224x224x3, float32, raw [0, 255] range) without touching the
+model itself. Only *how* we get there changes: validation, decoding, and
+every transform go through OpenCV instead of tf.io.
+
+Note on normalization: the model's own first layer applies MobileNetV2's
+preprocess_input (scaling [0, 255] -> [-1, 1]) internally — see
+src/model_training.py's create_model(). This pipeline must hand off raw
+[0, 255] values, NOT pre-scaled ones, or that scaling gets applied twice
+and destroys almost all of the image's information (see _to_float32).
 
 Pipeline
 --------
@@ -20,15 +25,15 @@ Pipeline
 7. [Optional] Background handling — flatten non-leaf-colored background
                     toward neutral gray via an HSV color-threshold mask,
                     so the model focuses on the leaf.
-8. Normalize      — scale to [-1, 1] (MobileNetV2 preprocessing), add the
-                    batch dimension.
+8. Scale to float32 — keep the [0, 255] range (the model normalizes
+                    internally), add the batch dimension.
 
 Usage
 -----
     from src.image_preprocessing import preprocess_leaf_image
 
     image_batch = preprocess_leaf_image(file_bytes, target_size=(224, 224))
-    # image_batch.shape == (1, 224, 224, 3), dtype float32, range [-1, 1]
+    # image_batch.shape == (1, 224, 224, 3), dtype float32, range [0, 255]
 
     # with the optional steps enabled:
     image_batch = preprocess_leaf_image(
@@ -196,15 +201,23 @@ def _flatten_background(img_rgb: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# 8. Normalization (must match what the trained model expects)
+# 8. Scale to float32 (model owns MobileNetV2 normalization internally)
 # ---------------------------------------------------------------------------
-def _normalize_mobilenet_v2(img_rgb: np.ndarray) -> np.ndarray:
-    """Replicates tf.keras.applications.mobilenet_v2.preprocess_input:
-    scales uint8 [0, 255] to float32 [-1, 1]. The model's architecture and
-    trained weights are untouched — this only reproduces the exact input
-    distribution it was trained on, via OpenCV/numpy instead of tf.io.
+def _to_float32(img_rgb: np.ndarray) -> np.ndarray:
+    """Cast uint8 [0, 255] pixels to float32, keeping the same [0, 255] range.
+
+    IMPORTANT: this does NOT rescale to [-1, 1]. The trained model's first
+    layer already calls tf.keras.applications.mobilenet_v2.preprocess_input
+    internally (see src/model_training.py's create_model()), which expects
+    raw [0, 255] input and does the /127.5 - 1.0 scaling itself. If this
+    function also rescaled to [-1, 1], the model would apply that scaling
+    a second time on already-normalized data, collapsing every pixel into
+    a narrow band near -1 and destroying almost all image information —
+    this previously caused a train/serve mismatch: training (via
+    src/dataset_prep.py, which also just casts to float32 without
+    rescaling) was fine, but real predictions through this module were not.
     """
-    return (img_rgb.astype(np.float32) / 127.5) - 1.0
+    return img_rgb.astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -227,8 +240,10 @@ def preprocess_leaf_image(
 
     Returns:
         np.ndarray of shape (1, height, width, 3), dtype float32, values
-        in [-1, 1] — a drop-in input for model.predict(), with the model
-        itself completely unchanged.
+        in [0, 255] — a drop-in input for model.predict(). The model's
+        first layer applies MobileNetV2's own normalization internally,
+        so this pipeline must NOT rescale to [-1, 1] itself (see
+        _to_float32's docstring for why that would double-normalize).
 
     Raises:
         ImageValidationError (a ValueError subclass): unsupported format,
@@ -246,8 +261,8 @@ def preprocess_leaf_image(
     if remove_background:
         img_rgb = _flatten_background(img_rgb)
 
-    normalized = _normalize_mobilenet_v2(img_rgb)         # normalization
-    return np.expand_dims(normalized, axis=0)              # batch dimension
+    scaled = _to_float32(img_rgb)                          # float32, still [0, 255]
+    return np.expand_dims(scaled, axis=0)                   # batch dimension
 
 
 # ---------------------------------------------------------------------------
