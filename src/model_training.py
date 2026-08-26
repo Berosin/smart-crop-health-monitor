@@ -86,6 +86,8 @@ SEVERITY_MAP = {
     "Brown_Spot": "Moderate",
     "Leaf_Blast": "High",
     "Neck_Blast": "High",
+    "Brown_Rust": "Moderate",
+    "Yellow_Rust": "Moderate",
 }
 
 
@@ -178,6 +180,7 @@ def train_head(
     epochs: int,
     learning_rate: float,
     callbacks: list[tf.keras.callbacks.Callback],
+    class_weight: dict[int, float] | None = None,
 ) -> tf.keras.callbacks.History:
     """Phase 1: Train only the classification head (base frozen)."""
     base_model.trainable = False
@@ -185,12 +188,15 @@ def train_head(
     print(f"\n{'='*60}")
     print("PHASE 1: Training head only (base frozen)")
     print(f"Epochs: {epochs}, LR: {learning_rate}")
+    if class_weight:
+        print(f"Class weights: {class_weight}")
     print(f"{'='*60}\n")
     return model.fit(
         train_ds,
         validation_data=val_ds,
         epochs=epochs,
         callbacks=callbacks,
+        class_weight=class_weight,
         verbose=1,
     )
 
@@ -204,6 +210,7 @@ def fine_tune(
     learning_rate: float,
     fine_tune_at: int,
     callbacks: list[tf.keras.callbacks.Callback],
+    class_weight: dict[int, float] | None = None,
 ) -> tf.keras.callbacks.History:
     """Phase 2: Fine-tune top layers of base model."""
     base_model.trainable = True
@@ -224,6 +231,7 @@ def fine_tune(
         validation_data=val_ds,
         epochs=epochs,
         callbacks=callbacks,
+        class_weight=class_weight,
         verbose=1,
     )
 
@@ -442,7 +450,7 @@ def predict_disease(
 # 7. Main training pipeline
 # ---------------------------------------------------------------------------
 
-def run_training(data_dir: str | Path, crop: str = DEFAULT_DISEASE_CROP, **overrides: Any) -> dict[str, Any]:
+def run_training(data_dir: str | Path, crop: str = DEFAULT_DISEASE_CROP, use_class_weights: bool = False, **overrides: Any) -> dict[str, Any]:
     """Complete training pipeline from data directory to saved model.
 
     Args:
@@ -450,6 +458,13 @@ def run_training(data_dir: str | Path, crop: str = DEFAULT_DISEASE_CROP, **overr
             per disease class for this crop, e.g. data/samples/potato/).
         crop: Crop name, e.g. "Tomato" or "Potato". Determines where the
             model is saved — see config.DISEASE_MODELS / get_model_dir().
+        use_class_weights: If True, weight the loss by inverse class
+            frequency to compensate for imbalanced classes. Off by default —
+            full "balanced" weighting can overcorrect when one class has
+            very few images (it starts guessing that class too often,
+            trading precision for recall and often lowering overall and
+            macro-F1 accuracy). Worth trying, but verify it actually helped
+            before keeping it, rather than assuming it will.
         **overrides: Any TRAIN_CONFIG keys to override.
 
     Returns:
@@ -473,8 +488,13 @@ def run_training(data_dir: str | Path, crop: str = DEFAULT_DISEASE_CROP, **overr
 
     class_names = data["class_names"]
     num_classes = data["num_classes"]
+    class_weight = data["class_weights"] if use_class_weights else None
     print(f"Classes: {class_names} ({num_classes})")
     print(f"Train/Val/Test: {data['counts']['train']}/{data['counts']['val']}/{data['counts']['test']}")
+    if use_class_weights:
+        print(f"Class weights (balanced for imbalance): {class_weight}")
+    else:
+        print("Class weights: disabled (pass use_class_weights=True to enable)")
 
     # 2. Create model
     model, base_model = create_model(num_classes)
@@ -489,6 +509,7 @@ def run_training(data_dir: str | Path, crop: str = DEFAULT_DISEASE_CROP, **overr
         epochs=config["epochs_head"],
         learning_rate=config["learning_rate_head"],
         callbacks=callbacks,
+        class_weight=class_weight,
     )
 
     # 5. Phase 2: Fine-tune
@@ -499,6 +520,7 @@ def run_training(data_dir: str | Path, crop: str = DEFAULT_DISEASE_CROP, **overr
         learning_rate=config["learning_rate_fine"],
         fine_tune_at=config["fine_tune_at"],
         callbacks=callbacks,
+        class_weight=class_weight,
     )
 
     # 6. Evaluate on test set
@@ -535,6 +557,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs-fine", type=int, default=TRAIN_CONFIG["epochs_fine"])
     parser.add_argument("--batch-size", type=int, default=TRAIN_CONFIG["batch_size"])
     parser.add_argument("--no-fine-tune", action="store_true", help="Skip fine-tuning phase")
+    parser.add_argument("--use-class-weights", action="store_true", help="Weight loss by inverse class frequency (off by default — can overcorrect on very small classes)")
     args = parser.parse_args()
 
     data_path = Path(args.data_dir)
@@ -551,7 +574,7 @@ if __name__ == "__main__":
     }
 
     try:
-        result = run_training(data_path, crop=args.crop, **overrides)
+        result = run_training(data_path, crop=args.crop, use_class_weights=args.use_class_weights, **overrides)
     except (FileNotFoundError, NotADirectoryError, ValueError) as e:
         # Known, expected dataset problems (missing dir, empty dir, no
         # class subfolders, ...) get a clean message instead of a

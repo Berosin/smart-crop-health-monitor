@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
+from sklearn.utils.class_weight import compute_class_weight
 from config import IMAGE_SIZE, IMAGE_CHANNELS
 
 def get_class_names_from_dir(data_dir: str | Path) -> list[str]:
@@ -63,12 +64,32 @@ def load_image_paths_and_labels(data_dir: str | Path, class_names: list[str] | N
     return paths, labels
 
 def build_augmentation_layer(config: dict[str, Any] | None = None) -> tf.keras.Sequential:
-    cfg = {"horizontal_flip": True, "rotation_factor": 0.05, "zoom_factor": 0.05, "seed": 42, **(config or {})}
-    layers = [
-        tf.keras.layers.RandomFlip("horizontal", seed=cfg["seed"]),
-        tf.keras.layers.RandomRotation(cfg["rotation_factor"], fill_mode="reflect", seed=cfg["seed"]),
-        tf.keras.layers.RandomZoom(cfg["zoom_factor"], fill_mode="reflect", seed=cfg["seed"])
-    ]
+    cfg = {
+        "horizontal_flip": True, "vertical_flip": False,
+        "rotation_factor": 0.05, "zoom_factor": 0.05,
+        "height_factor": 0.0, "width_factor": 0.0,
+        "brightness_factor": 0.0, "contrast_factor": 0.0,
+        "fill_mode": "reflect", "seed": 42,
+        **(config or {}),
+    }
+    flip_mode = "horizontal_and_vertical" if cfg["vertical_flip"] else "horizontal" if cfg["horizontal_flip"] else None
+    layers = []
+    if flip_mode:
+        layers.append(tf.keras.layers.RandomFlip(flip_mode, seed=cfg["seed"]))
+    layers.append(tf.keras.layers.RandomRotation(cfg["rotation_factor"], fill_mode=cfg["fill_mode"], seed=cfg["seed"]))
+    layers.append(tf.keras.layers.RandomZoom(cfg["zoom_factor"], fill_mode=cfg["fill_mode"], seed=cfg["seed"]))
+    if cfg["height_factor"] or cfg["width_factor"]:
+        layers.append(tf.keras.layers.RandomTranslation(
+            cfg["height_factor"], cfg["width_factor"], fill_mode=cfg["fill_mode"], seed=cfg["seed"]
+        ))
+    if cfg["contrast_factor"]:
+        layers.append(tf.keras.layers.RandomContrast(cfg["contrast_factor"], seed=cfg["seed"]))
+    if cfg["brightness_factor"]:
+        # RandomBrightness operates on 0-255 range values (matches this
+        # pipeline's float32-but-unnormalized images) when value_range is set.
+        layers.append(tf.keras.layers.RandomBrightness(
+            cfg["brightness_factor"], value_range=(0, 255), seed=cfg["seed"]
+        ))
     return tf.keras.Sequential(layers, name="augmentation")
 
 def preprocess_image(image_path: tf.Tensor, label: tf.Tensor, target_size: tuple[int, int] = IMAGE_SIZE, channels: int = IMAGE_CHANNELS, augment: bool = False, augmentation_layer: tf.keras.Sequential | None = None):
@@ -104,11 +125,21 @@ def prepare_datasets(data_dir: str | Path, batch_size: int = 32, val_split: floa
     paths_train, paths_test, y_train, y_test = train_test_split(paths, int_labels, test_size=test_split, random_state=seed)
     paths_train, paths_val, y_train, y_val = train_test_split(paths_train, y_train, test_size=val_size, random_state=seed)
 
+    # Balanced class weights from the *training* split only — heavier weight
+    # for underrepresented classes (e.g. a class with 30 images vs. another
+    # with 1,500) so the loss doesn't let the model ignore them. Passed to
+    # model.fit(class_weight=...) in model_training.py.
+    class_weights = dict(zip(
+        np.unique(y_train),
+        compute_class_weight("balanced", classes=np.unique(y_train), y=y_train),
+    ))
+
     return {
         "train_ds": create_dataset(paths_train, y_train, batch_size=batch_size, shuffle=True, augment=augment_train, augmentation_config=augmentation_config, target_size=target_size, channels=channels, seed=seed),
         "val_ds": create_dataset(paths_val, y_val, batch_size=batch_size, shuffle=False, augment=False, target_size=target_size, channels=channels),
         "test_ds": create_dataset(paths_test, y_test, batch_size=batch_size, shuffle=False, augment=False, target_size=target_size, channels=channels),
         "class_names": class_names, "num_classes": len(class_names), "label_map": label_map,
+        "class_weights": class_weights,
         "steps_per_epoch": {"train": int(np.ceil(len(paths_train)/batch_size)), "val": int(np.ceil(len(paths_val)/batch_size)), "test": int(np.ceil(len(paths_test)/batch_size))},
         "counts": {"train": len(paths_train), "val": len(paths_val), "test": len(paths_test)}
     }
