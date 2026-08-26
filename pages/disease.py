@@ -43,6 +43,11 @@ SEVERITY_MAP = {
     "Brown_Spot": "Moderate",
     "Leaf_Blast": "High",
     "Neck_Blast": "High",
+    "Brown_Rust": "Moderate",
+    "Yellow_Rust": "Moderate",
+    "Common_Rust": "Moderate",
+    "Gray_Leaf_Spot": "Moderate",
+    "Northern_Leaf_Blight": "High",
 }
 
 RECOMMENDATION_MAP = {
@@ -52,6 +57,11 @@ RECOMMENDATION_MAP = {
     "Brown_Spot": "Brown spot detected. Improve field nutrition (especially potassium), apply a recommended fungicide (e.g. propiconazole), and avoid water stress.",
     "Leaf_Blast": "Leaf blast detected. Apply a tricyclazole-based fungicide, avoid excess nitrogen, and maintain proper water management in the field.",
     "Neck_Blast": "Neck blast detected. Urgent: apply fungicide at early panicle stage, avoid dense planting, and monitor closely since this can significantly cut yield.",
+    "Brown_Rust": "Brown rust detected. Apply a triazole-based fungicide, monitor for warm humid conditions that favor spread, and consider a resistant variety for the next planting.",
+    "Yellow_Rust": "Yellow rust detected. Apply a triazole-based fungicide promptly, monitor cool humid conditions closely (this rust spreads fast in cool weather), and scout neighboring fields.",
+    "Common_Rust": "Common rust detected. Apply a strobilurin or triazole fungicide if severe, and favor rust-resistant hybrids in future plantings.",
+    "Gray_Leaf_Spot": "Gray leaf spot detected. Rotate crops away from corn/residue for a season, apply a foliar fungicide if disease pressure is high, and improve field airflow.",
+    "Northern_Leaf_Blight": "Northern leaf blight detected. Apply a foliar fungicide promptly, especially before tasseling, and consider resistant hybrids next season since yield loss can be severe.",
 }
 
 SEVERITY_META = {
@@ -69,6 +79,11 @@ CLASS_COLORS = {
     "Brown_Spot": "#C97A3B",
     "Leaf_Blast": "#B5564B",
     "Neck_Blast": "#7C3730",
+    "Brown_Rust": "#8B4A2E",
+    "Yellow_Rust": "#C9973B",
+    "Common_Rust": "#B5713B",
+    "Gray_Leaf_Spot": "#8A8578",
+    "Northern_Leaf_Blight": "#7C5A3B",
 }
 
 

@@ -88,6 +88,9 @@ SEVERITY_MAP = {
     "Neck_Blast": "High",
     "Brown_Rust": "Moderate",
     "Yellow_Rust": "Moderate",
+    "Common_Rust": "Moderate",
+    "Gray_Leaf_Spot": "Moderate",
+    "Northern_Leaf_Blight": "High",
 }
 
 
