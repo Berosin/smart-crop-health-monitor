@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
-
 import streamlit as st
 
-from config import APP_CONFIG, LABELS_PATH
+from config import APP_CONFIG, DISEASE_MODELS, get_trained_crops
+from src.dataset_prep import load_class_names
 from utils.ui import page_header, card, callout, footer
 from utils.icons import icon_html
 
@@ -17,7 +16,7 @@ def render() -> None:
     st.markdown(
         """
         **Smart Crop Health Monitoring** is a software-only Streamlit
-        application for checking tomato crop health. It combines trained
+        application for checking crop health. It combines trained
         image classification, environmental risk analysis, an explainable
         health score, and practical agricultural recommendations in one
         workflow. No sensors or IoT hardware are required.
@@ -26,8 +25,8 @@ def render() -> None:
 
     st.markdown("#### Current workflow")
     steps = [
-        ("1", "Upload a tomato leaf image", "Submit a clear JPG or PNG image for analysis."),
-        ("2", "Classify the leaf", "The trained model recognizes Healthy, Early Blight, or Late Blight."),
+        ("1", "Pick a crop and upload a leaf image", "Choose a trained crop and submit a clear JPG or PNG image for analysis."),
+        ("2", "Classify the leaf", "That crop's trained model recognizes Healthy, Early Blight, or Late Blight."),
         ("3", "Review confidence", "The prediction includes class probabilities and confidence."),
         ("4", "Enter environmental readings", "Provide temperature, humidity, soil moisture, and rainfall."),
         ("5", "Assess environmental risk", "The trained environmental model classifies the current conditions."),
@@ -74,22 +73,26 @@ def render() -> None:
     st.markdown("---")
 
     st.markdown("#### Current model scope")
-    with open(LABELS_PATH, "r", encoding="utf-8") as labels_file:
-        label_map = json.load(labels_file)
-    disease_classes = [
-        name.replace("_", " ")
-        for name, _ in sorted(label_map.items(), key=lambda item: item[1])
-    ]
-    scope_cols = st.columns(3)
-    with scope_cols[0]:
-        card("Supported crop", "<b>Tomato</b>")
-    with scope_cols[1]:
-        card("Disease classes", f"<b>{', '.join(disease_classes)}</b>")
-    with scope_cols[2]:
-        card("Health result", "<b>0-100 score + risk breakdown</b>")
+    trained_crops = get_trained_crops()
 
-    callout(
-        f"{icon_html('info', size=18)}The disease model is currently trained for tomato leaves only. "
-        "Additional crops can be added after their own labeled data and model classes are trained."
-    )
+    if not trained_crops:
+        callout(f"{icon_html('warning', size=18)}No trained disease model found yet.")
+    else:
+        scope_cols = st.columns(len(trained_crops))
+        for col, crop in zip(scope_cols, trained_crops):
+            disease_classes = [
+                name.replace("_", " ")
+                for name in load_class_names(DISEASE_MODELS[crop]["labels_path"])
+            ]
+            with col:
+                card(crop, f"<b>{', '.join(disease_classes)}</b>")
+
+    all_crops = list(DISEASE_MODELS.keys())
+    untrained = [c for c in all_crops if c not in trained_crops]
+    if untrained:
+        callout(
+            f"{icon_html('info', size=18)}Currently trained: <b>{', '.join(trained_crops) or 'none'}</b>. "
+            f"<b>{', '.join(untrained)}</b> can be added by training a model for that crop — "
+            "see the Disease Detection page for the training command."
+        )
     footer()

@@ -24,7 +24,7 @@ import seaborn as sns
 import tensorflow as tf
 from sklearn.metrics import classification_report, confusion_matrix
 
-from config import IMAGE_SIZE, IMAGE_CHANNELS, LABELS_PATH, MODEL_PATH
+from config import IMAGE_SIZE, IMAGE_CHANNELS, DISEASE_MODELS, DEFAULT_DISEASE_CROP
 from src.dataset_prep import (
     prepare_datasets,
     save_label_map,
@@ -34,8 +34,21 @@ from src.dataset_prep import (
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-MODEL_DIR = Path("models/disease_model")
-MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+def get_model_dir(crop: str) -> Path:
+    """Resolve the models/ subfolder for a given crop.
+
+    Uses config.DISEASE_MODELS when the crop is already registered there
+    (so training output lands exactly where the app expects it); falls back
+    to the same "models/disease_model_<crop>" convention for a crop that
+    hasn't been added to the registry yet.
+    """
+    if crop in DISEASE_MODELS:
+        model_dir = Path(DISEASE_MODELS[crop]["model_path"]).parent
+    else:
+        model_dir = Path(f"models/disease_model_{crop.lower()}")
+    model_dir.mkdir(parents=True, exist_ok=True)
+    return model_dir
 
 TRAIN_CONFIG = {
     "batch_size": 32,
@@ -334,29 +347,36 @@ def plot_confusion_matrix(cm: np.ndarray, class_names: list[str], save_path: Pat
 # ---------------------------------------------------------------------------
 
 def save_model(model: tf.keras.Model, class_names: list[str], model_dir: Path) -> None:
-    """Save model in SavedModel format and persist labels."""
+    """Save model in SavedModel format and persist labels.
+
+    Everything lives directly in model_dir (models/disease_model_<crop>/) —
+    this is the single canonical location the app reads from for that crop
+    (see config.DISEASE_MODELS), so there's no separate copy step and
+    nothing to rename or move by hand afterward.
+    """
+    model_dir = Path(model_dir)
     # SavedModel format (directory)
     tf.saved_model.save(model, str(model_dir / "saved_model"))
     # Also save as .keras for easy loading
     model.save(model_dir / "model.keras")
     # Save labels
     save_label_map(class_names, model_dir / "labels.json")
-    # Copy to config location for UI
-    save_label_map(class_names, LABELS_PATH)
-    # Copy model to config location
-    model.save(MODEL_PATH)
-    print(f"Model saved to {model_dir}")
-    print(f"Labels saved to {model_dir / 'labels.json'} and {LABELS_PATH}")
+    print(f"Model saved to {model_dir / 'model.keras'}")
+    print(f"Labels saved to {model_dir / 'labels.json'}")
 
 
 # ---------------------------------------------------------------------------
 # 6. Prediction function (standalone, for UI integration)
 # ---------------------------------------------------------------------------
 
-def load_trained_model(model_dir: Path | str = None) -> tuple[tf.keras.Model, list[str]]:
-    """Load trained model and class labels."""
+def load_trained_model(model_dir: Path | str = None, crop: str = DEFAULT_DISEASE_CROP) -> tuple[tf.keras.Model, list[str]]:
+    """Load trained model and class labels.
+
+    Pass model_dir explicitly, or omit it and pass crop (default "Tomato")
+    to resolve the crop's folder automatically via get_model_dir().
+    """
     if model_dir is None:
-        model_dir = MODEL_DIR
+        model_dir = get_model_dir(crop)
     model_dir = Path(model_dir)
 
     model = tf.keras.models.load_model(model_dir / "model.keras")
@@ -419,20 +439,24 @@ def predict_disease(
 # 7. Main training pipeline
 # ---------------------------------------------------------------------------
 
-def run_training(data_dir: str | Path, **overrides: Any) -> dict[str, Any]:
+def run_training(data_dir: str | Path, crop: str = DEFAULT_DISEASE_CROP, **overrides: Any) -> dict[str, Any]:
     """Complete training pipeline from data directory to saved model.
 
     Args:
-        data_dir: Path to class-subfolder image directory.
+        data_dir: Path to class-subfolder image directory (one subfolder
+            per disease class for this crop, e.g. data/samples/potato/).
+        crop: Crop name, e.g. "Tomato" or "Potato". Determines where the
+            model is saved — see config.DISEASE_MODELS / get_model_dir().
         **overrides: Any TRAIN_CONFIG keys to override.
 
     Returns:
         Dict with model, history, metrics, and paths.
     """
     config = {**TRAIN_CONFIG, **overrides}
+    model_dir = get_model_dir(crop)
 
     # 1. Prepare datasets
-    print(f"Preparing datasets from {data_dir}...")
+    print(f"Preparing datasets from {data_dir} (crop: {crop})...")
     data = prepare_datasets(
         data_dir,
         batch_size=config["batch_size"],
@@ -441,6 +465,7 @@ def run_training(data_dir: str | Path, **overrides: Any) -> dict[str, Any]:
         augment_train=True,
         augmentation_config=AUGMENTATION_CONFIG,
         seed=config["seed"],
+        save_labels=False,  # save_model() persists labels to model_dir at the end
     )
 
     class_names = data["class_names"]
@@ -452,7 +477,7 @@ def run_training(data_dir: str | Path, **overrides: Any) -> dict[str, Any]:
     model, base_model = create_model(num_classes)
 
     # 3. Callbacks
-    callbacks = get_callbacks(MODEL_DIR, config["early_stopping_patience"])
+    callbacks = get_callbacks(model_dir, config["early_stopping_patience"])
 
     # 4. Phase 1: Train head
     history_head = train_head(
@@ -475,13 +500,13 @@ def run_training(data_dir: str | Path, **overrides: Any) -> dict[str, Any]:
 
     # 6. Evaluate on test set
     print("\nEvaluating on test set...")
-    metrics = evaluate_model(model, data["test_ds"], class_names, MODEL_DIR)
+    metrics = evaluate_model(model, data["test_ds"], class_names, model_dir)
 
     # 7. Plot training curves
-    plot_training_history(history_head, history_fine, MODEL_DIR)
+    plot_training_history(history_head, history_fine, model_dir)
 
     # 8. Save model
-    save_model(model, class_names, MODEL_DIR)
+    save_model(model, class_names, model_dir)
 
     return {
         "model": model,
@@ -489,7 +514,7 @@ def run_training(data_dir: str | Path, **overrides: Any) -> dict[str, Any]:
         "history_head": history_head,
         "history_fine": history_fine,
         "metrics": metrics,
-        "model_dir": MODEL_DIR,
+        "model_dir": model_dir,
     }
 
 
@@ -502,6 +527,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train crop disease detection model")
     parser.add_argument("--data-dir", default="data/samples", help="Path to class-subfolder image directory")
+    parser.add_argument("--crop", default=DEFAULT_DISEASE_CROP, help="Crop name, e.g. Tomato or Potato (determines save location)")
     parser.add_argument("--epochs-head", type=int, default=TRAIN_CONFIG["epochs_head"])
     parser.add_argument("--epochs-fine", type=int, default=TRAIN_CONFIG["epochs_fine"])
     parser.add_argument("--batch-size", type=int, default=TRAIN_CONFIG["batch_size"])
@@ -522,7 +548,7 @@ if __name__ == "__main__":
     }
 
     try:
-        result = run_training(data_path, **overrides)
+        result = run_training(data_path, crop=args.crop, **overrides)
     except (FileNotFoundError, NotADirectoryError, ValueError) as e:
         # Known, expected dataset problems (missing dir, empty dir, no
         # class subfolders, ...) get a clean message instead of a

@@ -27,8 +27,10 @@ import streamlit as st
 
 from config import (
     ENV_RANGES,
-    LABELS_PATH,
+    DISEASE_MODELS,
+    get_trained_crops,
 )
+from src.dataset_prep import load_class_names
 from src.db import insert_analysis
 from src.environment_model import predict_environmental_risk
 from src.errors import safe_action, logger
@@ -55,18 +57,6 @@ from utils.ui import (
 )
 from utils.icons import icon_html
 
-CROPS = ["Tomato"]
-
-
-def _load_disease_classes() -> list[str]:
-    """Return disease classes in the same order as the trained model."""
-    with open(LABELS_PATH, "r", encoding="utf-8") as labels_file:
-        label_map = json.load(labels_file)
-    return [name for name, _ in sorted(label_map.items(), key=lambda item: item[1])]
-
-
-DISEASE_CLASSES = _load_disease_classes()
-
 # Per-factor icon/label/unit metadata lives in config.ENV_RANGES (single
 # source of truth, also used by pages/environment.py).
 ENV_LABELS = ENV_RANGES
@@ -75,12 +65,30 @@ ENV_LABELS = ENV_RANGES
 # ---------------------------------------------------------------------------
 # Page
 # ---------------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
+def _disease_classes_for(crop: str) -> list[str]:
+    """Return the disease classes for one crop's trained model, in the
+    same order as the model's output — cached per crop."""
+    return load_class_names(DISEASE_MODELS[crop]["labels_path"])
+
+
 def render() -> None:
     page_header(
         "health",
         "Crop Health Analysis",
         "Combine disease detection and environmental data into an overall health score.",
     )
+
+    trained_crops = get_trained_crops()
+
+    if not trained_crops:
+        callout(
+            f"{icon_html('warning', size=18)}<b>No trained disease model found.</b> "
+            "Train one first from the Disease Detection page's instructions before "
+            "running a health analysis."
+        )
+        footer()
+        return
 
     col_in, col_out = st.columns([2, 3])
 
@@ -89,16 +97,17 @@ def render() -> None:
         st.markdown("#### Inputs")
 
         with st.expander("Disease result", expanded=True):
-            crop = st.selectbox("Crop name", CROPS, index=0)
+            crop = st.selectbox("Crop name", trained_crops, index=0)
+            disease_classes = _disease_classes_for(crop)
             disease_labels = {
                 disease: disease.replace("_", " ")
-                for disease in DISEASE_CLASSES
+                for disease in disease_classes
             }
             disease = st.selectbox(
                 "Detected disease",
-                DISEASE_CLASSES,
+                disease_classes,
                 format_func=disease_labels.get,
-                index=1,
+                index=min(1, len(disease_classes) - 1),
             )
             confidence = st.number_input(
                 "Disease confidence",

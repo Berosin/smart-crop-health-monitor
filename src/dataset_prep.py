@@ -29,6 +29,17 @@ def load_label_map(path: str | Path = None) -> dict[str, int]:
         path = LABELS_PATH
     return json.loads(Path(path).read_text())
 
+def load_class_names(path: str | Path = None) -> list[str]:
+    """Load a labels.json (name -> index map) and return names ordered by index.
+
+    Shared by every page that needs a trained model's class list (Disease
+    Detection, Health Analysis, About) so the name->index->name conversion
+    only lives in one place.
+    """
+    label_map = load_label_map(path)
+    inv_map = {v: k for k, v in label_map.items()}
+    return [inv_map[i] for i in range(len(inv_map))]
+
 def encode_labels(labels: list[str], label_map: dict[str, int]) -> np.ndarray:
     return np.array([label_map[l] for l in labels], dtype=np.int32)
 

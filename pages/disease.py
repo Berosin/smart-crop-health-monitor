@@ -12,7 +12,8 @@ import plotly.graph_objects as go
 import streamlit as st
 import tensorflow as tf
 
-from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, MODEL_PATH, LABELS_PATH
+from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, DISEASE_MODELS, DEFAULT_DISEASE_CROP, get_trained_crops
+from src.dataset_prep import load_class_names
 from src.errors import PredictionError, logger
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 from utils.ui import (
@@ -27,9 +28,12 @@ from utils.icons import icon_html
 
 # ---------------------------------------------------------------------------
 # Disease catalog (used for recommendations and severity mapping)
-# The model was trained on generic classes: Healthy, Early_Blight, Late_Blight
+# Keyed by class name rather than crop, since every trained crop model so
+# far shares the same PlantVillage-style classes: Healthy, Early_Blight,
+# Late_Blight. If a new crop introduces a class name not listed here, it
+# still works — .get() below falls back to "Unknown"/a generic message —
+# but for a good demo, add that class's entry to these maps too.
 # ---------------------------------------------------------------------------
-MODEL_CLASSES = ["Early_Blight", "Healthy", "Late_Blight"]
 
 # Severity and recommendation per model class
 SEVERITY_MAP = {
@@ -63,28 +67,25 @@ CLASS_COLORS = {
 # Model loading (cached)
 # ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner="Loading disease detection model…")
-def load_model():
-    """Load the trained Keras model and class labels.
+def load_model(crop: str):
+    """Load the trained Keras model and class labels for one crop.
 
-    Returns (None, None) if the model is missing or fails to load — the
-    caller shows a friendly "model unavailable" message either way. Any
+    Cached per crop (Streamlit keys the cache by argument value), so
+    switching crops in the UI loads each model once and reuses it after.
+    Returns (None, None) if that crop's model is missing or fails to load —
+    the caller shows a friendly "model unavailable" message either way. Any
     unexpected loading error (corrupted file, version mismatch, ...) is
     logged in full server-side, never shown to the user.
     """
-    if not Path(MODEL_PATH).exists():
+    paths = DISEASE_MODELS.get(crop)
+    if paths is None or not Path(paths["model_path"]).exists():
         return None, None
     try:
-        model = tf.keras.models.load_model(MODEL_PATH)
-        # Load label map
-        import json
-        with open(LABELS_PATH, "r") as f:
-            label_map = json.load(f)
-        # Convert to list in correct order
-        inv_map = {v: k for k, v in label_map.items()}
-        class_names = [inv_map[i] for i in range(len(inv_map))]
+        model = tf.keras.models.load_model(paths["model_path"])
+        class_names = load_class_names(paths["labels_path"])
         return model, class_names
     except Exception:
-        logger.exception("Failed to load disease detection model")
+        logger.exception("Failed to load disease detection model for crop=%s", crop)
         return None, None
 
 
@@ -166,24 +167,41 @@ def render() -> None:
         "Upload a crop leaf image to detect diseases with AI.",
     )
 
-    # Load model
-    model, class_names = load_model()
+    trained_crops = get_trained_crops()
+
+    if not trained_crops:
+        callout(
+            f"{icon_html('warning', size=18)}<b>No trained model found.</b> Train one first using "
+            "<code>python -m src.model_training --data-dir data/samples --crop Tomato</code> "
+            "(swap <code>--crop</code> for any crop in <code>config.DISEASE_MODELS</code>). "
+            "If a model file exists but still won't load, check the server logs for details."
+        )
+        footer()
+        return
+
+    default_index = trained_crops.index(DEFAULT_DISEASE_CROP) if DEFAULT_DISEASE_CROP in trained_crops else 0
+    crop = st.selectbox("Crop", trained_crops, index=default_index)
+
+    # Load model for the selected crop
+    model, class_names = load_model(crop)
 
     if model is None:
         callout(
-            f"{icon_html('warning', size=18)}<b>Model unavailable.</b> Train the model first using "
-            "<code>python -m src.model_training --data-dir data/samples</code>, "
-            "or place a trained model at <code>models/crop_disease_model.h5</code>. "
-            "If a model file exists but still won't load, check the server logs "
-            "for details."
+            f"{icon_html('warning', size=18)}<b>Model unavailable.</b> "
+            f"{crop}'s model file couldn't be loaded even though it's listed as trained — "
+            "check the server logs for details."
         )
         footer()
         return
 
     callout(
-        f"{icon_html('success', size=18)}<b>Model loaded</b> — {model.name} with "
+        f"{icon_html('success', size=18)}<b>Model loaded</b> — {crop} ({model.name}) with "
         f"{len(class_names)} classes: {', '.join(class_names)}"
     )
+
+    if st.session_state.get("_disease_crop") != crop:
+        st.session_state["_disease_crop"] = crop
+        st.session_state.pop("_disease_pred", None)
 
     col_input, col_result = st.columns([2, 3])
 

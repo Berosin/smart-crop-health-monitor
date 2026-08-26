@@ -19,8 +19,40 @@ APP_CONFIG = {
 # ---------------------------------------------------------------------------
 DB_PATH = "database/crop_health.db"
 
-MODEL_PATH = "models/disease_model/model.keras"
-LABELS_PATH = "models/disease_labels.json"
+# ---------------------------------------------------------------------------
+# Disease detection models — one trained MobileNetV2 model per crop
+# ---------------------------------------------------------------------------
+# Each crop gets its own folder under models/ holding model.keras + labels.json.
+# To add a new crop: train it (src/model_training.py --crop <Name>), then add
+# an entry here — Disease Detection, Health Analysis, and About all read from
+# this single registry, so nothing else needs to change.
+DISEASE_MODELS = {
+    "Tomato": {
+        "model_path": "models/disease_model_tomato/model.keras",
+        "labels_path": "models/disease_model_tomato/labels.json",
+    },
+    "Potato": {
+        "model_path": "models/disease_model_potato/model.keras",
+        "labels_path": "models/disease_model_potato/labels.json",
+    },
+}
+DEFAULT_DISEASE_CROP = "Tomato"
+
+# Backward-compatible aliases for any code referencing a single model.
+MODEL_PATH = DISEASE_MODELS[DEFAULT_DISEASE_CROP]["model_path"]
+LABELS_PATH = DISEASE_MODELS[DEFAULT_DISEASE_CROP]["labels_path"]
+
+
+def get_trained_crops() -> list[str]:
+    """Return DISEASE_MODELS crops whose model file is actually present on disk.
+
+    Pages use this instead of hardcoding a crop list, so a newly trained
+    crop appears in every dropdown as soon as its model file exists —
+    no other code changes needed.
+    """
+    import os
+    return [crop for crop, paths in DISEASE_MODELS.items() if os.path.exists(paths["model_path"])]
+
 
 ENV_MODEL_DIR = "models/environment_model"
 ENV_MODEL_PATH = "models/environment_model/model.joblib"
