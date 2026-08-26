@@ -35,6 +35,10 @@ DISEASE_MODELS = {
         "model_path": "models/disease_model_potato/model.keras",
         "labels_path": "models/disease_model_potato/labels.json",
     },
+    "Rice": {
+        "model_path": "models/disease_model_rice/model.keras",
+        "labels_path": "models/disease_model_rice/labels.json",
+    },
 }
 DEFAULT_DISEASE_CROP = "Tomato"
 

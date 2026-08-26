@@ -40,12 +40,18 @@ SEVERITY_MAP = {
     "Healthy": "None",
     "Early_Blight": "Moderate",
     "Late_Blight": "High",
+    "Brown_Spot": "Moderate",
+    "Leaf_Blast": "High",
+    "Neck_Blast": "High",
 }
 
 RECOMMENDATION_MAP = {
     "Healthy": "Crop looks healthy. Maintain regular monitoring and balanced irrigation.",
     "Early_Blight": "Early blight detected. Remove infected leaves, apply copper-based fungicide, and improve air circulation between plants.",
     "Late_Blight": "Late blight detected. Urgent: destroy affected plants, apply mancozeb, and avoid working in the field while wet.",
+    "Brown_Spot": "Brown spot detected. Improve field nutrition (especially potassium), apply a recommended fungicide (e.g. propiconazole), and avoid water stress.",
+    "Leaf_Blast": "Leaf blast detected. Apply a tricyclazole-based fungicide, avoid excess nitrogen, and maintain proper water management in the field.",
+    "Neck_Blast": "Neck blast detected. Urgent: apply fungicide at early panicle stage, avoid dense planting, and monitor closely since this can significantly cut yield.",
 }
 
 SEVERITY_META = {
@@ -60,6 +66,9 @@ CLASS_COLORS = {
     "Healthy": "#7FA687",
     "Early_Blight": "#B5564B",
     "Late_Blight": "#B5564B",
+    "Brown_Spot": "#C97A3B",
+    "Leaf_Blast": "#B5564B",
+    "Neck_Blast": "#7C3730",
 }
 
 

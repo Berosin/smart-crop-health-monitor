@@ -83,6 +83,9 @@ SEVERITY_MAP = {
     "Healthy": "None",
     "Early_Blight": "Moderate",
     "Late_Blight": "High",
+    "Brown_Spot": "Moderate",
+    "Leaf_Blast": "High",
+    "Neck_Blast": "High",
 }
 
 
