@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import streamlit as st
 
-from config import APP_CONFIG
+from config import APP_CONFIG, get_trained_crops
+from src.db import get_analyses, get_disease_analyses, get_environment_analyses
+from src.errors import DatabaseError, logger
 from utils.ui import (
     inject_custom_css,
     set_page_config,
@@ -38,11 +40,13 @@ def render_home() -> None:
         APP_CONFIG["subtitle"],
     )
 
+    trained_crops = get_trained_crops()
+
     # Intro
     callout(
-        "**Tomato health workflow** · upload a leaf image, review the trained "
-        "disease prediction, enter environmental readings, and calculate an "
-        "explainable health score."
+        "**Multi-crop health workflow** · pick a crop, upload a leaf image, "
+        "review the trained disease prediction, enter environmental readings, "
+        "and calculate an explainable health score."
     )
     st.markdown(
         """
@@ -54,7 +58,7 @@ def render_home() -> None:
 
     st.markdown("### What you can do here")
     feats = [
-        ("disease", "Detect diseases", "Upload a tomato leaf image; the trained model reports disease, confidence, and severity."),
+        ("disease", "Detect diseases", "Upload a leaf image for any supported crop; the trained model reports disease, confidence, and severity."),
         ("environment", "Track conditions", "Log temperature, humidity, soil moisture and rainfall."),
         ("health", "Score crop health", "Combine the image and environmental signals into one health score."),
         ("dashboard", "Visualize trends", "See stats and charts across all your past analyses."),
@@ -84,16 +88,47 @@ def render_home() -> None:
         """
     )
 
-    st.markdown("### Current coverage")
-    glances = st.columns(4)
-    with glances[0]:
-        st.metric("Modules", "6")
-    with glances[1]:
-        st.metric("Supported crops", "1")
-    with glances[2]:
-        st.metric("Disease classes", "3")
-    with glances[3]:
-        st.metric("Analysis storage", "SQLite")
+    st.markdown("### Supported crops")
+    if trained_crops:
+        cols = st.columns(len(trained_crops))
+        for col, crop in zip(cols, trained_crops):
+            with col:
+                icon_tag = icon_html("leaf", size=28, margin_right="0")
+                st.markdown(
+                    f"""
+                    <div class="card" style="text-align:center;height:100%">
+                      <div>{icon_tag}</div>
+                      <h4 style="color:var(--ink);margin:.4rem 0">{crop}</h4>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+    else:
+        callout(
+            "No trained disease models were found yet. Train one with "
+            "`src/model_training.py --crop <name>` to see it listed here."
+        )
+
+    st.markdown("### Your activity")
+    try:
+        n_health = len(get_analyses(limit=100000))
+        n_disease = len(get_disease_analyses(limit=100000))
+        n_env = len(get_environment_analyses(limit=100000))
+        glances = st.columns(3)
+        with glances[0]:
+            st.metric("Health analyses", n_health)
+        with glances[1]:
+            st.metric("Disease detections", n_disease)
+        with glances[2]:
+            st.metric("Environmental readings", n_env)
+    except DatabaseError as e:
+        st.error(str(e))
+    except Exception:
+        logger.exception("Unexpected error loading home page activity stats")
+        st.error(
+            "Loading your activity stats failed unexpectedly. Please try again. "
+            "If the problem continues, contact the app maintainer."
+        )
 
     footer()
 
