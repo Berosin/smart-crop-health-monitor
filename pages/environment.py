@@ -28,7 +28,6 @@ from src.validation import validate_crop, validate_environmental_reading, Valida
 from utils.ui import (
     page_header,
     callout,
-    card,
     footer,
     get_dummy_env_readings,
     CHART_THEME,
@@ -43,10 +42,42 @@ CROPS = list(ENV_CROP_RANGES.keys())
 # so the rest of this file doesn't need to change.
 FACTOR_META = ENV_RANGES
 
+# Left-accent color per factor for the input-summary tiles — drawn from the
+# app's existing earthy palette (utils.ui's --clay/--leaf-light/--soil/--leaf)
+# so each reading is visually distinct without introducing new colors.
+FACTOR_ACCENTS = {
+    "temperature":   "#C97A3B",  # clay
+    "humidity":      "#7FA687",  # leaf-light
+    "soil_moisture": "#8A6A47",  # soil
+    "rainfall":      "#2F6D46",  # leaf
+}
+
 
 # ---------------------------------------------------------------------------
 # Page
 # ---------------------------------------------------------------------------
+def _render_input_tile(key: str, value: float) -> None:
+    """One reading in the 'Input summary' panel: icon + label on top,
+    large value with unit below, colored left accent per factor —
+    matches the KPI-tile style used on the Dashboard rather than the
+    plain bordered card used previously (which felt cramped at 4-across
+    and let long labels like "Soil moisture" wrap awkwardly)."""
+    spec = FACTOR_META[key]
+    accent = FACTOR_ACCENTS.get(key, "var(--leaf)")
+    icon_tag = icon_html(spec["icon"], size=16, margin_right=".35em")
+    st.markdown(
+        f"""
+        <div class="metric-tile" style="border-left-color:{accent}; margin-bottom:1rem;">
+          <div class="label">{icon_tag}{spec['label']}</div>
+          <div class="value">{value:g}
+            <span style="font-size:.8rem; font-weight:500; color:var(--text-faint);">{spec['unit']}</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render() -> None:
     page_header(
         "environment",
@@ -83,14 +114,11 @@ def render() -> None:
     # ----------------------------------------------------- input summary
     with col_summary:
         st.markdown("#### Input summary")
-        s1, s2, s3, s4 = st.columns(4)
-        for col, key in zip([s1, s2, s3, s4], factor_order):
+        st.caption("What will be sent to the risk model.")
+        s1, s2 = st.columns(2)
+        for col, key in zip([s1, s2, s1, s2], factor_order):
             with col:
-                card(
-                    FACTOR_META[key]["label"],
-                    f"<div style='font-size:1.4rem;font-weight:700;color:var(--ink)'>"
-                    f"{inputs[key]} {ENV_RANGES[key]['unit']}</div>",
-                )
+                _render_input_tile(key, inputs[key])
 
     st.markdown("---")
 
