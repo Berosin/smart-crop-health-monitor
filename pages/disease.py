@@ -5,6 +5,9 @@ Uses the trained TensorFlow/Keras MobileNetV2 model for inference.
 
 from __future__ import annotations
 
+import re
+import time
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -12,9 +15,10 @@ import plotly.graph_objects as go
 import streamlit as st
 import tensorflow as tf
 
-from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, DISEASE_MODELS, DEFAULT_DISEASE_CROP, get_trained_crops
+from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, DISEASE_MODELS, DEFAULT_DISEASE_CROP, UPLOAD_DIR, get_trained_crops
 from src.dataset_prep import load_class_names
-from src.errors import PredictionError, logger
+from src.db import insert_disease_analysis
+from src.errors import PredictionError, logger, safe_action
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 from utils.ui import (
     page_header,
@@ -226,6 +230,8 @@ def render() -> None:
     if st.session_state.get("_disease_crop") != crop:
         st.session_state["_disease_crop"] = crop
         st.session_state.pop("_disease_pred", None)
+        st.session_state.pop("_disease_saved_token", None)
+        st.session_state.pop("_disease_saved_id", None)
 
     col_input, col_result = st.columns([2, 3])
 
@@ -273,6 +279,8 @@ def render() -> None:
 
     if uploaded is None:
         st.session_state.pop("_disease_pred", None)
+        st.session_state.pop("_disease_saved_token", None)
+        st.session_state.pop("_disease_saved_id", None)
 
     # ----------------------------------------------------------------- results
     with col_result:
@@ -292,6 +300,16 @@ def render() -> None:
                 # Run inference with loading indicator
                 with st.spinner("Running disease detection…"):
                     pred = predict_disease(model, class_names, image_batch, threshold)
+
+                # Stash what's needed to save this analysis later: the crop,
+                # the raw image bytes/filename (so "Save Analysis" can persist
+                # the exact image that was analyzed, without depending on the
+                # file_uploader widget still holding it), and a unique token
+                # to guard against double-saving the same result on rerun.
+                pred["_crop"] = crop
+                pred["_image_bytes"] = uploaded.getvalue()
+                pred["_image_name"] = uploaded.name
+                pred["_analysis_token"] = uuid.uuid4().hex
 
                 st.session_state["_disease_pred"] = pred
                 st.rerun()
@@ -399,9 +417,78 @@ def _render_result(pred: dict) -> None:
         unsafe_allow_html=True,
     )
 
+    # Save to database
+    st.markdown("---")
+    _render_save_section(pred)
+
     if st.button("Re-run", use_container_width=True):
         st.session_state["_disease_pred"] = None
+        st.session_state.pop("_disease_saved_token", None)
+        st.session_state.pop("_disease_saved_id", None)
         st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Save to database
+# ---------------------------------------------------------------------------
+def _save_uploaded_image(image_bytes: bytes, original_name: str, crop: str) -> str:
+    """Persist the analyzed leaf image to disk and return its path.
+
+    Filenames are sanitized and timestamped to avoid collisions between
+    repeated uploads of the same original filename.
+    """
+    upload_dir = Path(UPLOAD_DIR) / "disease"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", original_name or "leaf.jpg")
+    filename = f"{crop.lower()}_{int(time.time() * 1000)}_{safe_name}"
+    path = upload_dir / filename
+    path.write_bytes(image_bytes)
+    return str(path)
+
+
+def _build_disease_db_record(pred: dict, image_path: str) -> dict:
+    """Map a disease prediction result to src.db's `disease_analyses` columns."""
+    return {
+        "crop_name": pred["_crop"],
+        "image_path": image_path,
+        "disease": pred["disease"],
+        "confidence": pred["confidence"],
+        "severity": pred["severity"],
+        "is_healthy": int(bool(pred["is_healthy"])),
+        "recommendation": pred["recommendation"],
+        # created_at (timestamp) is filled in automatically by insert_disease_analysis().
+    }
+
+
+def _render_save_section(pred: dict) -> None:
+    """'Save Analysis' button, guarded against duplicate inserts.
+
+    Mirrors pages/health.py's save pattern: each freshly *computed*
+    prediction carries a unique `_analysis_token`; a save is only allowed
+    once per token, and the button is replaced with a confirmation
+    afterward so a stray rerun or repeat click can't insert the same
+    analysis (and re-save the same image file) twice.
+    """
+    token = pred["_analysis_token"]
+    saved_token = st.session_state.get("_disease_saved_token")
+
+    if saved_token == token:
+        saved_id = st.session_state.get("_disease_saved_id")
+        st.success(f"Analysis saved to database (ID: {saved_id}).")
+        st.button("Saved ✓", use_container_width=True, disabled=True, key="_disease_saved_btn")
+        return
+
+    if st.button("Save Analysis", type="primary", use_container_width=True, key="_disease_save_btn"):
+        with safe_action("Saving analysis"):
+            with st.spinner("Saving analysis…"):
+                image_path = _save_uploaded_image(
+                    pred["_image_bytes"], pred["_image_name"], pred["_crop"]
+                )
+                record = _build_disease_db_record(pred, image_path)
+                analysis_id = insert_disease_analysis(record)
+            st.session_state["_disease_saved_token"] = token
+            st.session_state["_disease_saved_id"] = analysis_id
+            st.rerun()
 
 
 if __name__ == "__main__":

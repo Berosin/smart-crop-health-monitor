@@ -11,6 +11,8 @@ model, matching how pages/health.py is wired.
 
 from __future__ import annotations
 
+import uuid
+
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -18,8 +20,9 @@ from config import (
     ENV_RANGES,
     ENV_CROP_RANGES,
 )
+from src.db import insert_environment_analysis
 from src.environment_model import predict_environmental_risk
-from src.errors import logger
+from src.errors import logger, safe_action
 from src.health_engine import compute_environmental_risk_score
 from src.validation import validate_crop, validate_environmental_reading, ValidationError
 from utils.ui import (
@@ -131,6 +134,9 @@ def render() -> None:
     st.markdown("#### Factor visualization")
     _render_radar(results)
 
+    st.markdown("---")
+    _render_save_section(results)
+
     footer()
 
 
@@ -208,6 +214,7 @@ def _assess(crop: str, inputs: dict) -> dict:
         "model_used": env_pred["model_used"],
         "advice": advice,
         "inputs": {f["key"]: f["value"] for f in factors},
+        "_analysis_token": uuid.uuid4().hex,
     }
 
 
@@ -317,6 +324,51 @@ def _render_factor_table(results: dict) -> None:
     st.markdown("#### Recommendations")
     for tip in results["advice"]:
         st.markdown(f"• {tip}")
+
+
+def _build_env_db_record(results: dict) -> dict:
+    """Map an environmental assessment result to src.db's
+    `environment_analyses` columns."""
+    return {
+        "crop_name": results["crop"],
+        "temperature": results["inputs"]["temperature"],
+        "humidity": results["inputs"]["humidity"],
+        "soil_moisture": results["inputs"]["soil_moisture"],
+        "rainfall": results["inputs"]["rainfall"],
+        "risk_level": results["risk_level"],
+        "probability": results["probability"],
+        "health_score": results["health_score"],
+        "recommendation": results["model_recommendation"],
+        # created_at (timestamp) is filled in automatically by insert_environment_analysis().
+    }
+
+
+def _render_save_section(results: dict) -> None:
+    """'Save Analysis' button, guarded against duplicate inserts.
+
+    Mirrors pages/health.py's save pattern: each freshly computed
+    assessment carries a unique `_analysis_token`; a save is only allowed
+    once per token, and the button is replaced with a confirmation
+    afterward so a stray rerun or repeat click can't insert the same
+    reading twice.
+    """
+    token = results["_analysis_token"]
+    saved_token = st.session_state.get("_env_saved_token")
+
+    if saved_token == token:
+        saved_id = st.session_state.get("_env_saved_id")
+        st.success(f"Analysis saved to database (ID: {saved_id}).")
+        st.button("Saved ✓", use_container_width=True, disabled=True, key="_env_saved_btn")
+        return
+
+    if st.button("Save Analysis", type="primary", use_container_width=True, key="_env_save_btn"):
+        with safe_action("Saving analysis"):
+            with st.spinner("Saving analysis…"):
+                record = _build_env_db_record(results)
+                analysis_id = insert_environment_analysis(record)
+            st.session_state["_env_saved_token"] = token
+            st.session_state["_env_saved_id"] = analysis_id
+            st.rerun()
 
 
 def _render_radar(results: dict) -> None:
