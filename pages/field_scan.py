@@ -46,7 +46,7 @@ from src.errors import logger, safe_action
 from src.health_engine import compute_disease_risk_score, classify_health_status
 from src.image_preprocessing import ImageValidationError
 from utils.ui import (
-    page_header, callout, card, footer, metric_tile, health_score_card, CHART_THEME,
+    page_header, callout, card, footer, metric_tile, health_score_card, pretty_name, CHART_THEME,
 )
 from utils.icons import icon_html
 
@@ -289,7 +289,7 @@ def _render_report(report: dict) -> None:
         metric_tile("Healthy", f"{report['healthy_pct']:.0f}%",
                      f"{report['n_healthy']} / {report['n_total']} leaves")
     with c3:
-        metric_tile("Dominant disease", report["dominant_disease"] or "None detected")
+        metric_tile("Dominant disease", pretty_name(report["dominant_disease"]) or "None detected")
     with c4:
         metric_tile("Diseased leaves", str(report["n_diseased"]))
 
@@ -303,7 +303,7 @@ def _render_report(report: dict) -> None:
     fig = go.Figure(go.Bar(
         orientation="h",
         x=[dc[n] for n in names],
-        y=names,
+        y=[pretty_name(n) for n in names],
         text=[str(dc[n]) for n in names],
         textposition="outside",
         marker=dict(color=[CLASS_COLORS.get(n, "#7C8571") for n in names]),
@@ -350,7 +350,7 @@ def _render_report(report: dict) -> None:
                     f"""
                     <div style="border-left:4px solid {border};padding:.15rem .5rem;
                                 font-size:.78rem;color:#4E5646;margin:-.4rem 0 .8rem">
-                      <b>{leaf['disease']}</b><br/>{leaf['confidence']*100:.0f}% confidence{low_conf_note}
+                      <b>{pretty_name(leaf['disease'])}</b><br/>{leaf['confidence']*100:.0f}% confidence{low_conf_note}
                     </div>
                     """,
                     unsafe_allow_html=True,

@@ -142,7 +142,11 @@ def inject_custom_css() -> None:
             height: 100%;
         }
         .metric-tile .label { font-size: .74rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
-        .metric-tile .value { font-family: var(--font-mono); font-size: 1.55rem; font-weight: 600; color: var(--ink); margin-top: .25rem; }
+        .metric-tile .value {
+            font-family: var(--font-mono); font-size: 1.55rem; font-weight: 600;
+            color: var(--ink); margin-top: .25rem; line-height: 1.25;
+            word-break: break-word; overflow-wrap: break-word;
+        }
         .metric-tile .delta { font-size: .78rem; margin-top: .2rem; color: var(--text-faint); }
         .history-metric .value {
             font-size: 1.3rem; line-height: 1.2; overflow-wrap: anywhere;
@@ -388,13 +392,19 @@ def page_header(icon: str, title: str, subtitle: str | None = None) -> None:
 # Layout primitives
 # ---------------------------------------------------------------------------
 def metric_tile(label: str, value: str, delta: str | None = None) -> None:
-    """A themed KPI tile rendered as raw HTML inside its own column."""
+    """A themed KPI tile rendered as raw HTML inside its own column.
+
+    Long values (e.g. a multi-word disease name) get a smaller font-size
+    so they wrap cleanly within the tile instead of overflowing or
+    crowding the label above them.
+    """
     delta_html = f'<div class="delta">{delta}</div>' if delta else ""
+    value_style = ' style="font-size:1.1rem"' if len(str(value)) > 12 else ""
     st.markdown(
         f"""
         <div class="metric-tile">
           <div class="label">{label}</div>
-          <div class="value">{value}</div>
+          <div class="value"{value_style}>{value}</div>
           {delta_html}
         </div>
         """,
@@ -420,6 +430,21 @@ def card(title: str | None = None, body: str | None = None) -> None:
 def _render_inline_markdown(text: str) -> str:
     """Render the small bold-markdown subset used in HTML UI components."""
     return re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+
+
+def pretty_name(name: str | None) -> str:
+    """Turn a model class name like 'Gray_Leaf_Spot' into 'Gray Leaf Spot'.
+
+    Purely a display transform (underscores -> spaces) — every place that
+    stores or compares these names (DB, SEVERITY_MAP, CLASS_COLORS, ...)
+    keeps using the raw underscored form; only user-facing text runs
+    through this. Reused anywhere a disease/class name is shown as a KPI
+    value, chart label, or caption, so long names wrap at natural word
+    boundaries instead of overflowing or breaking mid-word.
+    """
+    if not name or not isinstance(name, str):
+        return name
+    return name.replace("_", " ")
 
 
 def footer() -> None:

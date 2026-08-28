@@ -6,18 +6,22 @@ instead of any charts/metrics when nothing has been saved yet.
 
 from __future__ import annotations
 
+import json
+from collections import Counter
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.db import get_analyses, get_disease_analyses, get_environment_analyses
+from src.db import get_analyses, get_disease_analyses, get_environment_analyses, get_field_scans
 from src.errors import DatabaseError, logger
 from src.health_engine import classify_health_status, HEALTH_STATUS_BANDS
 from utils.ui import (
     page_header,
     callout,
     footer,
+    pretty_name,
     CHART_THEME,
     RISK_LEVELS,
 )
@@ -48,13 +52,15 @@ def render() -> None:
         "Statistics and trends across all crop, disease, and environmental analyses.",
     )
 
-    tab_health, tab_disease, tab_env = st.tabs(
-        ["Crop Health", "Disease Detection", "Environmental"]
+    tab_health, tab_disease, tab_field, tab_env = st.tabs(
+        ["Crop Health", "Disease Detection", "Field Scans", "Environmental"]
     )
     with tab_health:
         _render_health_tab()
     with tab_disease:
         _render_disease_tab()
+    with tab_field:
+        _render_field_scan_tab()
     with tab_env:
         _render_env_tab()
 
@@ -459,7 +465,192 @@ def _dd_chart_severity_distribution(df: pd.DataFrame) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tab 3 — Environmental (sourced from `environment_analyses`)
+# Tab 3 — Field Scans (sourced from `field_scans`)
+# ---------------------------------------------------------------------------
+def _render_field_scan_tab() -> None:
+    try:
+        rows = get_field_scans(limit=2000)
+    except DatabaseError as e:
+        st.error(str(e))
+        return
+    except Exception:
+        logger.exception("Unexpected error loading field scan dashboard data")
+        st.error(
+            "Loading field scan dashboard data failed unexpectedly. "
+            "Please try again. If the problem continues, contact the app maintainer."
+        )
+        return
+
+    if not rows:
+        callout(
+            f"{icon_html('field_scan', size=18)}No field scans saved yet. Run a batch "
+            "scan on the <b>Field Scan</b> page and click <b>Save Field Scan</b> "
+            "to populate this tab."
+        )
+        return
+
+    df = _load_field_scan_dataframe(rows)
+
+    total_scans = len(df)
+    total_leaves = int(df["num_images"].sum())
+    avg_healthy_pct = round(df["healthy_pct"].mean(), 1)
+    avg_score = round(df["field_health_score"].mean(), 1)
+    high_risk_scans = int(df["status"].isin(HIGH_RISK_STATUSES).sum())
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        _tile("Total Scans", str(total_scans), "#2F6D46", "#1C2E20", "all-time")
+    with c2:
+        _tile("Leaves Scanned", str(total_leaves), "#7FA687", "#1C2E20",
+              "across all scans")
+    with c3:
+        _tile("Avg Healthy %", f"{avg_healthy_pct}%", "#D6A34B", "#1C2E20",
+              "per scan")
+    with c4:
+        _tile("Avg Field Score", str(avg_score), "#D6A34B", "#1C2E20",
+              "out of 100")
+    with c5:
+        _tile("High-Risk Scans", str(high_risk_scans), "#B5564B", "#7C3730",
+              "At Risk + Critical")
+
+    st.markdown("---")
+
+    _fs_chart_score_trend(df)
+    _fs_chart_crop_wise(df)
+    _fs_chart_dominant_disease(df)
+    _fs_chart_severity_breakdown(rows)
+
+
+def _load_field_scan_dataframe(rows: list[dict]) -> pd.DataFrame:
+    df = pd.DataFrame(rows)
+    df = df.rename(columns={"crop_name": "crop"})
+    df["num_images"] = pd.to_numeric(df.get("num_images"), errors="coerce").fillna(0).astype(int)
+    df["healthy_pct"] = pd.to_numeric(df.get("healthy_pct"), errors="coerce").fillna(0)
+    df["field_health_score"] = pd.to_numeric(df.get("field_health_score"), errors="coerce").fillna(0).astype(int)
+    df["status"] = df["field_health_score"].apply(classify_health_status)
+    df["dominant_disease"] = (
+        df.get("dominant_disease").fillna("None detected") if "dominant_disease" in df
+        else "None detected"
+    )
+
+    df["_dt"] = pd.to_datetime(df.get("created_at"), errors="coerce", utc=True).dt.tz_localize(None)
+    df["_dt"] = df["_dt"].fillna(pd.Timestamp.now())
+    df["date"] = df["_dt"].dt.strftime("%Y-%m-%d")
+    return df
+
+
+def _aggregate_severity_counts(rows: list[dict]) -> dict[str, int]:
+    """Sum each scan's stored severity_breakdown JSON into one field-wide total."""
+    total: Counter = Counter()
+    for r in rows:
+        raw = r.get("severity_breakdown")
+        if not raw:
+            continue
+        try:
+            total.update(json.loads(raw))
+        except (TypeError, ValueError):
+            continue
+    return dict(total)
+
+
+def _fs_chart_score_trend(df: pd.DataFrame) -> None:
+    """Line chart of average field health score over time + scan volume bars."""
+    trend = (
+        df.groupby("date", as_index=False)["field_health_score"]
+          .mean().sort_values("date")
+          .rename(columns={"field_health_score": "avg_score"})
+    )
+    counts = df.groupby("date", as_index=False).size().rename(columns={"size": "n"})
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=counts["date"], y=counts["n"], name="Scans per day",
+        yaxis="y2", marker=dict(color="#D8E2CC"), opacity=0.6,
+    ))
+    fig.add_trace(go.Scatter(
+        x=trend["date"], y=trend["avg_score"], mode="lines+markers",
+        name="Avg field score", line=dict(color="#2F6D46", width=3), marker=dict(size=8),
+    ))
+    fig.update_layout(
+        **CHART_THEME, margin=dict(t=10, b=10), height=320,
+        legend=dict(orientation="h", y=1.12), xaxis_title="Date",
+        yaxis=dict(title="Avg field score", range=[0, 100]),
+        yaxis2=dict(title="Scans / day", overlaying="y", side="right", showgrid=False),
+    )
+    st.markdown("#### Field health score trend")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def _fs_chart_crop_wise(df: pd.DataFrame) -> None:
+    """Bar chart: average field health score per crop."""
+    grouped = (
+        df.groupby("crop", as_index=False)["field_health_score"]
+          .mean().rename(columns={"field_health_score": "avg_score"})
+    )
+    fig = go.Figure(go.Bar(
+        x=grouped["crop"], y=grouped["avg_score"],
+        marker=dict(color="#7FA687"),
+        text=grouped["avg_score"].round(1), textposition="outside",
+    ))
+    fig.update_layout(
+        **CHART_THEME, margin=dict(t=10, b=10), height=320,
+        xaxis_title="Crop", yaxis=dict(title="Avg field health score", range=[0, 100]),
+    )
+    st.markdown("#### Avg field health score by crop")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def _fs_chart_dominant_disease(df: pd.DataFrame) -> None:
+    """Horizontal bar of how often each disease was the dominant one in a scan."""
+    counts = df["dominant_disease"].value_counts()
+    colors = []
+    palette_i = 0
+    for name in counts.index:
+        if str(name).strip().lower() in ("healthy", "none detected"):
+            colors.append("#2F6D46")
+        else:
+            colors.append(DISEASE_PALETTE[palette_i % len(DISEASE_PALETTE)])
+            palette_i += 1
+
+    fig = go.Figure(go.Bar(
+        orientation="h",
+        x=counts.values,
+        y=[pretty_name(n) for n in counts.index],
+        text=counts.values, textposition="outside",
+        marker=dict(color=colors),
+    ))
+    fig.update_layout(
+        **CHART_THEME, margin=dict(t=10, b=10), height=max(220, 40 * len(counts)),
+        xaxis_title="Number of scans", yaxis_title="", showlegend=False,
+    )
+    st.markdown("#### Dominant disease across scans")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def _fs_chart_severity_breakdown(rows: list[dict]) -> None:
+    """Pie chart of severity levels aggregated across every leaf, every scan."""
+    counts = _aggregate_severity_counts(rows)
+    if not counts:
+        return
+    order = ["None", "Mild", "Moderate", "High"]
+    ordered = {k: counts[k] for k in order if k in counts}
+    ordered.update({k: v for k, v in counts.items() if k not in order})
+
+    fig = go.Figure(go.Pie(
+        labels=list(ordered.keys()), values=list(ordered.values()),
+        marker=dict(colors=[SEVERITY_COLORS.get(s, "#93998A") for s in ordered]),
+        hole=0.45, textinfo="label+percent",
+    ))
+    fig.update_layout(
+        **CHART_THEME, margin=dict(t=10, b=10), height=340,
+        showlegend=True, legend=dict(orientation="h", y=-0.1),
+    )
+    st.markdown("#### Aggregate severity breakdown (all scanned leaves)")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ---------------------------------------------------------------------------
+# Tab 4 — Environmental (sourced from `environment_analyses`)
 # ---------------------------------------------------------------------------
 def _render_env_tab() -> None:
     try:
