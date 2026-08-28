@@ -55,6 +55,15 @@ class PredictionError(AppError):
     """Raised when a model loads fine but inference itself fails."""
 
 
+class GradCAMError(AppError):
+    """Raised when Grad-CAM heatmap generation fails.
+
+    Kept distinct from PredictionError so callers can catch it separately
+    and degrade gracefully — a failed explainability heatmap should never
+    hide an otherwise-successful disease prediction.
+    """
+
+
 # ValidationError and ImageValidationError live in their own modules
 # (src.validation / src.image_preprocessing) since they're raised in many
 # call sites, but both subclass ValueError, so safe_action() catches them
@@ -74,8 +83,8 @@ def safe_action(label: str = "This action") -> Iterator[None]:
             insert_analysis(record)
 
     - AppError (and subclasses: DatabaseError, ModelNotFoundError,
-      PredictionError) and ValueError (and subclasses: ValidationError,
-      ImageValidationError): shown to the user verbatim — these are
+      PredictionError, GradCAMError) and ValueError (and subclasses:
+      ValidationError, ImageValidationError): shown to the user verbatim — these are
       already written to be safe, specific, and actionable.
     - FileNotFoundError: shown verbatim (used for "model not trained yet"
       messages that already include instructions).

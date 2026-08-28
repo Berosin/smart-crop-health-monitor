@@ -18,7 +18,8 @@ import tensorflow as tf
 from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, DISEASE_MODELS, DEFAULT_DISEASE_CROP, UPLOAD_DIR, get_trained_crops
 from src.dataset_prep import load_class_names
 from src.db import insert_disease_analysis
-from src.errors import PredictionError, logger, safe_action
+from src.errors import PredictionError, GradCAMError, logger, safe_action
+from src.gradcam import generate_gradcam, overlay_heatmap
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 from utils.ui import (
     page_header,
@@ -301,6 +302,30 @@ def render() -> None:
                 with st.spinner("Running disease detection…"):
                     pred = predict_disease(model, class_names, image_batch, threshold)
 
+                # Explainability: Grad-CAM heatmap over the same image batch
+                # that was just classified, explaining the top prediction.
+                # A failure here must never hide the (already successful)
+                # prediction above — degrade to no heatmap instead.
+                with st.spinner("Computing explainability heatmap…"):
+                    try:
+                        pred_idx = class_names.index(pred["disease"])
+                        gradcam = generate_gradcam(model, image_batch, pred_index=pred_idx)
+                        pred["gradcam_heatmap"] = gradcam["heatmap"]
+                        pred["gradcam_base_image"] = gradcam["base_image"]
+                        pred["gradcam_error"] = None
+                    except GradCAMError as e:
+                        pred["gradcam_heatmap"] = None
+                        pred["gradcam_base_image"] = None
+                        pred["gradcam_error"] = str(e)
+                    except Exception:
+                        logger.exception("Unexpected error during Grad-CAM generation")
+                        pred["gradcam_heatmap"] = None
+                        pred["gradcam_base_image"] = None
+                        pred["gradcam_error"] = (
+                            "Couldn't generate the explainability heatmap for "
+                            "this prediction."
+                        )
+
                 # Stash what's needed to save this analysis later: the crop,
                 # the raw image bytes/filename (so "Save Analysis" can persist
                 # the exact image that was analyzed, without depending on the
@@ -405,6 +430,9 @@ def _render_result(pred: dict) -> None:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    # Explainability — Grad-CAM
+    _render_gradcam(pred)
+
     # Recommendation
     st.markdown("#### Recommendation")
     rec_icon = icon_html("healthy" if pred["is_healthy"] else "diseased", size=20)
@@ -427,6 +455,56 @@ def _render_result(pred: dict) -> None:
         st.session_state.pop("_disease_saved_id", None)
         st.rerun()
 
+# ---------------------------------------------------------------------------
+# Explainability — Grad-CAM
+# ---------------------------------------------------------------------------
+def _render_gradcam(pred: dict) -> None:
+    """Render the Grad-CAM heatmap next to the leaf image the model saw.
+
+    The heavy part (gradient computation) already ran once, right after
+    inference, and its result is cached on `pred`. Adjusting the overlay
+    opacity slider below only re-blends two already-computed arrays
+    (src.gradcam.overlay_heatmap) — no re-inference, no gradient tape.
+    """
+    st.markdown("#### Why this prediction? (Grad-CAM)")
+
+    heatmap = pred.get("gradcam_heatmap")
+    base_image = pred.get("gradcam_base_image")
+
+    if heatmap is None or base_image is None:
+        callout(
+            f"{icon_html('warning', size=18)}"
+            f"{pred.get('gradcam_error') or 'Explainability heatmap unavailable for this prediction.'}"
+        )
+        return
+
+    alpha = st.slider(
+        "Heatmap intensity", 0.0, 1.0, 0.4, 0.05,
+        help="How strongly the heatmap is blended over the leaf image below. "
+             "This only re-blends the already-computed heatmap — it does not "
+             "re-run the model.",
+        key="_gradcam_alpha",
+    )
+    overlay = overlay_heatmap(heatmap, base_image, alpha=alpha)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.image(base_image, caption="What the model saw (224×224 input)", use_container_width=True)
+    with c2:
+        st.image(overlay, caption=f"Grad-CAM for '{pred['disease']}'", use_container_width=True)
+
+    st.markdown(
+        f"""
+        <div style="font-size:.8rem;color:#5B6353;margin-top:.25rem">
+          {icon_html('info', size=14, margin_right='.3em')}
+          Warmer regions (red/yellow) contributed most to the prediction above;
+          cooler regions (blue) contributed least. Computed by backpropagating
+          the predicted class score to the model's last convolutional layer
+          (Grad-CAM, Selvaraju et al. 2017).
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ---------------------------------------------------------------------------
 # Save to database
