@@ -6,13 +6,15 @@ only third-party dependency is the Python standard library (`sqlite3`).
 
 Schema
 ------
-Three separate tables, one per analysis type, each saved from its own page:
+Four separate tables, one per analysis type, each saved from its own page:
 - `analyses`             — Crop Health Analysis page (disease + environment
                             blended into one score)
 - `disease_analyses`      — Disease Detection page (single-image predictions,
                             including the saved leaf image path)
 - `environment_analyses`  — Environmental Analysis page (readings + trained
                             risk-model output)
+- `field_scans`           — Field Scan page (aggregated batch report across
+                            many leaf photos from one field walk)
 
 Keeping them separate (rather than one shared table) means each analysis
 type's history and dashboard can filter/chart on columns that only make
@@ -25,13 +27,16 @@ Functions
 - insert_analysis(data)              -> save a crop health analysis, return id
 - insert_disease_analysis(data)      -> save a disease detection analysis
 - insert_environment_analysis(data)  -> save an environmental analysis
+- insert_field_scan(data)            -> save an aggregated field scan
 - get_analyses(limit=...)            -> list recent crop health analyses
 - get_disease_analyses(limit=...)    -> list recent disease analyses
 - get_environment_analyses(limit=...)-> list recent environmental analyses
+- get_field_scans(limit=...)         -> list recent field scans
 - get_analysis_by_id(id)             -> fetch one crop health analysis
 - delete_analysis(id)                -> remove one crop health analysis
 - delete_disease_analysis(id)        -> remove one disease analysis
 - delete_environment_analysis(id)    -> remove one environmental analysis
+- delete_field_scan(id)              -> remove one field scan
 """
 
 from __future__ import annotations
@@ -98,6 +103,22 @@ CREATE TABLE IF NOT EXISTS environment_analyses (
 );
 """
 
+FIELD_SCAN_SCHEMA = """
+CREATE TABLE IF NOT EXISTS field_scans (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    crop_name           TEXT    NOT NULL,
+    num_images          INTEGER,
+    num_healthy         INTEGER,
+    num_diseased        INTEGER,
+    healthy_pct         REAL,
+    dominant_disease    TEXT,
+    field_health_score  INTEGER,
+    severity_breakdown  TEXT,   -- JSON: {"None": 8, "Moderate": 3, ...}
+    disease_breakdown   TEXT,   -- JSON: {"Healthy": 8, "Late_Blight": 3, ...}
+    created_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+"""
+
 # Columns in the order they appear in each table (minus id and created_at,
 # which the database manages). Used for row <-> dict mapping and inserts.
 COLUMNS = [
@@ -114,6 +135,11 @@ DISEASE_COLUMNS = [
 ENVIRONMENT_COLUMNS = [
     "crop_name", "temperature", "humidity", "soil_moisture", "rainfall",
     "risk_level", "probability", "health_score", "recommendation",
+]
+
+FIELD_SCAN_COLUMNS = [
+    "crop_name", "num_images", "num_healthy", "num_diseased", "healthy_pct",
+    "dominant_disease", "field_health_score", "severity_breakdown", "disease_breakdown",
 ]
 
 
@@ -150,6 +176,7 @@ def init_db(db_path: str = DB_PATH) -> None:
         conn.execute(SCHEMA)
         conn.execute(DISEASE_SCHEMA)
         conn.execute(ENVIRONMENT_SCHEMA)
+        conn.execute(FIELD_SCAN_SCHEMA)
         conn.commit()
 
 
@@ -273,3 +300,24 @@ def get_environment_analysis_by_id(analysis_id: int, db_path: str = DB_PATH) -> 
 def delete_environment_analysis(analysis_id: int, db_path: str = DB_PATH) -> bool:
     """Delete an environmental analysis by id. Return True if removed."""
     return _delete_from("environment_analyses", analysis_id, db_path)
+
+
+# --- Field Scan (pages/field_scan.py) ----------------------------------------
+def insert_field_scan(data: dict, db_path: str = DB_PATH) -> int:
+    """Insert an aggregated field scan and return its new row id."""
+    return _insert_into("field_scans", FIELD_SCAN_COLUMNS, data, db_path)
+
+
+def get_field_scans(limit: int = 100, db_path: str = DB_PATH) -> list[dict]:
+    """Return the most recent field scans, newest first."""
+    return _get_all_from("field_scans", limit, db_path)
+
+
+def get_field_scan_by_id(scan_id: int, db_path: str = DB_PATH) -> dict | None:
+    """Return one field scan as a dict, or None if not found."""
+    return _get_by_id_from("field_scans", scan_id, db_path)
+
+
+def delete_field_scan(scan_id: int, db_path: str = DB_PATH) -> bool:
+    """Delete a field scan by id. Return True if a row was removed."""
+    return _delete_from("field_scans", scan_id, db_path)

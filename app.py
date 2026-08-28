@@ -26,6 +26,7 @@ from utils.icons import icon_html
 # Page renderers (imported lazily inside the router to keep startup light)
 import pages.dashboard as dashboard
 import pages.disease as disease
+import pages.field_scan as field_scan
 import pages.environment as environment
 import pages.health as health
 import pages.history as history
@@ -59,6 +60,7 @@ def render_home() -> None:
     st.markdown("### What you can do here")
     feats = [
         ("disease", "Detect diseases", "Upload a leaf image for any supported crop; the trained model reports disease, confidence, and severity."),
+        ("field_scan", "Scan a field", "Upload 10-20+ leaf photos from a field walk and get one aggregated field health report."),
         ("environment", "Track conditions", "Log temperature, humidity, soil moisture and rainfall."),
         ("health", "Score crop health", "Combine the image and environmental signals into one health score."),
         ("dashboard", "Visualize trends", "See stats and charts across all your past analyses."),
@@ -142,6 +144,7 @@ def main() -> None:
         "home":        render_home,
         "dashboard":   dashboard.render,
         "disease":     disease.render,
+        "field_scan":  field_scan.render,
         "environment": environment.render,
         "health":      health.render,
         "history":     history.render,
