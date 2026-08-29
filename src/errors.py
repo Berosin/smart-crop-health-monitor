@@ -64,6 +64,17 @@ class GradCAMError(AppError):
     """
 
 
+class WeatherError(AppError):
+    """Raised when a live weather API call fails (bad/missing key, unknown
+    location, network issue, rate limit, ...).
+
+    Kept distinct so callers can catch it and fall back to manual entry
+    rather than blocking the Environmental Analysis page entirely — live
+    weather is a convenience on top of manual entry, never a replacement
+    that can leave the page unusable if the API is unreachable.
+    """
+
+
 # ValidationError and ImageValidationError live in their own modules
 # (src.validation / src.image_preprocessing) since they're raised in many
 # call sites, but both subclass ValueError, so safe_action() catches them
@@ -83,7 +94,7 @@ def safe_action(label: str = "This action") -> Iterator[None]:
             insert_analysis(record)
 
     - AppError (and subclasses: DatabaseError, ModelNotFoundError,
-      PredictionError, GradCAMError) and ValueError (and subclasses:
+      PredictionError, GradCAMError, WeatherError) and ValueError (and subclasses:
       ValidationError, ImageValidationError): shown to the user verbatim — these are
       already written to be safe, specific, and actionable.
     - FileNotFoundError: shown verbatim (used for "model not trained yet"

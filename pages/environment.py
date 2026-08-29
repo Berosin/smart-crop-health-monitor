@@ -22,9 +22,10 @@ from config import (
 )
 from src.db import insert_environment_analysis
 from src.environment_model import predict_environmental_risk
-from src.errors import logger, safe_action
+from src.errors import logger, safe_action, WeatherError
 from src.health_engine import compute_environmental_risk_score
 from src.validation import validate_crop, validate_environmental_reading, ValidationError
+from src.weather import get_current_weather, get_forecast, build_forecast_risk, resolve_api_key
 from utils.ui import (
     page_header,
     callout,
@@ -92,20 +93,64 @@ def render() -> None:
         st.markdown("#### Enter environmental readings")
         crop = st.selectbox("Crop type", CROPS)
 
+        data_source = st.radio(
+            "Data source",
+            ["Manual Entry", "Live Weather"],
+            horizontal=True,
+            key="_env_data_source",
+            help="Live Weather auto-fills temperature, humidity, and rainfall "
+                 "from OpenWeatherMap for a location you choose. Soil moisture "
+                 "always needs a manual reading — no weather API measures it. "
+                 "Manual Entry (the default) needs nothing beyond this page.",
+        )
+
+        live_weather = None
+        if data_source == "Live Weather":
+            live_weather = _render_live_weather_panel()
+
+        # One-shot auto-fill: pre-seed the widget state for temperature/
+        # humidity/rainfall right before those widgets are created below.
+        # This must happen *before* instantiation, and must be one-shot
+        # (popped, not just read) — a keyed number_input ignores its
+        # `value=` argument on every rerun after the first, so simply
+        # passing the fetched value as `value=` on a later rerun would
+        # silently do nothing (this is Streamlit's normal, documented
+        # widget-state precedence, not a bug in it) and it would fight the
+        # user's own edits on top if we re-applied it on every rerun.
+        prefill = st.session_state.pop("_env_prefill_pending", None)
+        if prefill:
+            st.session_state["_env_input_temperature"] = prefill["temperature"]
+            st.session_state["_env_input_humidity"] = prefill["humidity"]
+            st.session_state["_env_input_rainfall"] = prefill["rainfall"]
+
         dummy = get_dummy_env_readings()
         inputs: dict = {}
         cols = st.columns(2)
         factor_order = ["temperature", "humidity", "soil_moisture", "rainfall"]
+        prefilled_keys = {"temperature", "humidity", "rainfall"} if prefill else set()
         for col, key in zip(cols * 2, factor_order):
             with col:
                 spec = ENV_RANGES[key]
-                inputs[key] = st.number_input(
-                    f"{FACTOR_META[key]['label']} ({spec['unit']})",
+                help_text = (
+                    "Not available from weather data — enter your own reading."
+                    if key == "soil_moisture" and live_weather else None
+                )
+                widget_kwargs = dict(
                     min_value=float(spec["min"]),
                     max_value=float(spec["max"]),
-                    value=float(dummy[key]),
                     step=FACTOR_META[key]["nudge"],
                     format="%.1f",
+                    key=f"_env_input_{key}",
+                    help=help_text,
+                )
+                # Omit `value=` on exactly the rerun where we just pre-seeded
+                # this key via session_state above — passing both at once is
+                # what Streamlit's widget-state policy warns about, even
+                # though the pre-seeded value still wins either way.
+                if key not in prefilled_keys:
+                    widget_kwargs["value"] = float(dummy[key])
+                inputs[key] = st.number_input(
+                    f"{FACTOR_META[key]['label']} ({spec['unit']})", **widget_kwargs,
                 )
 
         analyze = st.button("Assess environment", type="primary",
@@ -114,13 +159,22 @@ def render() -> None:
     # ----------------------------------------------------- input summary
     with col_summary:
         st.markdown("#### Input summary")
-        st.caption("What will be sent to the risk model.")
+        st.caption(
+            "What will be sent to the risk model."
+            + (f" Live weather for {live_weather['location_name']}, fetched {live_weather['fetched_at']}."
+               if live_weather else "")
+        )
         s1, s2 = st.columns(2)
         for col, key in zip([s1, s2, s1, s2], factor_order):
             with col:
                 _render_input_tile(key, inputs[key])
 
     st.markdown("---")
+
+    # ---------------------------------------------- forecast risk outlook
+    if data_source == "Live Weather" and live_weather:
+        _render_forecast_section(crop, inputs["soil_moisture"])
+        st.markdown("---")
 
     # ------------------------------------------------------- assessment
     if not analyze and not st.session_state.get("_env_results"):
@@ -166,6 +220,153 @@ def render() -> None:
     _render_save_section(results)
 
     footer()
+
+
+# ---------------------------------------------------------------------------
+# Live Weather — location + API key input, current-conditions fetch
+# ---------------------------------------------------------------------------
+def _render_live_weather_panel() -> dict | None:
+    """Location + API-key inputs, a Fetch button, and the fetched reading
+    (if any) from st.session_state. Returns the fetched weather dict, or
+    None if nothing has been successfully fetched yet this session.
+
+    Never blocks the rest of the page on failure — a bad key or unreachable
+    API just leaves live_weather as None, and the number_input fields above
+    simply keep their manual-entry placeholder values (see render()).
+    """
+    session_key = st.session_state.get("_owm_api_key")
+    api_key = resolve_api_key(session_key)
+
+    if api_key:
+        location = st.text_input(
+            "Location", value=st.session_state.get("_owm_location", "Chennai, IN"),
+            placeholder="e.g. Chennai, IN",
+            help="City name, optionally with a country code, e.g. 'Chennai, IN'.",
+            key="_owm_location",
+        )
+    else:
+        loc_col, key_col = st.columns(2)
+        with loc_col:
+            location = st.text_input(
+                "Location", value=st.session_state.get("_owm_location", "Chennai, IN"),
+                placeholder="e.g. Chennai, IN",
+                help="City name, optionally with a country code, e.g. 'Chennai, IN'.",
+                key="_owm_location",
+            )
+        with key_col:
+            typed_key = st.text_input(
+                "OpenWeatherMap API key", type="password",
+                key="_owm_api_key_input",
+                help="Free at openweathermap.org/api. Kept only for this session — "
+                     "never written to disk by this app. Set OPENWEATHERMAP_API_KEY "
+                     "as an environment variable or in .streamlit/secrets.toml to "
+                     "skip typing this every time.",
+            )
+            if typed_key:
+                st.session_state["_owm_api_key"] = typed_key
+                api_key = typed_key
+
+    if not api_key:
+        callout(
+            f"{icon_html('info', size=18)}No OpenWeatherMap API key configured yet. "
+            "Get a free one at <a href='https://openweathermap.org/api' target='_blank'>"
+            "openweathermap.org/api</a> and paste it above. "
+        
+        )
+        return st.session_state.get("_env_live_weather")
+
+    fetch = st.button("Fetch current weather", use_container_width=True, key="_owm_fetch_btn")
+    if fetch:
+        try:
+            with st.spinner(f"Fetching weather for {location}…"):
+                weather = get_current_weather(location, api_key)
+            st.session_state["_env_live_weather"] = weather
+            # One-shot: render() pops this right before creating the
+            # temperature/humidity/rainfall widgets, so this fetch
+            # overwrites them exactly once rather than fighting any
+            # edits the person makes afterward.
+            st.session_state["_env_prefill_pending"] = weather
+        except WeatherError as e:
+            st.error(str(e))
+        except Exception:
+            logger.exception("Unexpected error fetching live weather")
+            st.error(
+                "Fetching weather failed unexpectedly. Please try again, or "
+                "switch to Manual Entry above."
+            )
+
+    weather = st.session_state.get("_env_live_weather")
+    if weather:
+        st.markdown(
+            f"""
+            <div class="callout">
+              {icon_html('weather', size=18)}<b>{weather['location_name']}</b> — {weather['description']},
+              {weather['temperature']:.0f}°C, {weather['humidity']:.0f}% humidity
+              <span style="color:#7C8571;font-size:.8rem"> (fetched {weather['fetched_at']})</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    return weather
+
+
+# ---------------------------------------------------------------------------
+# Forecast disease-risk outlook — same trained model, forecast data as input
+# ---------------------------------------------------------------------------
+def _render_forecast_section(crop: str, soil_moisture: float) -> None:
+    st.markdown("#### Short-term disease risk forecast")
+    st.caption(
+        "Runs the same trained risk model against the next few days' forecast "
+        "instead of a single reading. Soil moisture is held at your current "
+        f"value above ({soil_moisture:g}%) for every day — no weather API "
+        "forecasts soil moisture."
+    )
+
+    api_key = resolve_api_key(st.session_state.get("_owm_api_key"))
+    location = st.session_state.get("_owm_location", "")
+    if not api_key or not location:
+        st.info("Fetch current weather above first (needs a location and API key).")
+        return
+
+    if st.button("Load 5-day risk forecast", key="_owm_forecast_btn"):
+        try:
+            with st.spinner("Fetching forecast and running the risk model…"):
+                forecast_days = get_forecast(location, api_key, days=5)
+                forecast_risk = build_forecast_risk(crop, forecast_days, soil_moisture)
+            st.session_state["_env_forecast_risk"] = forecast_risk
+        except WeatherError as e:
+            st.error(str(e))
+        except Exception:
+            logger.exception("Unexpected error building forecast risk")
+            st.error("Building the forecast failed unexpectedly. Please try again.")
+
+    forecast_risk = st.session_state.get("_env_forecast_risk")
+    if not forecast_risk:
+        return
+
+    cols = st.columns(len(forecast_risk))
+    for col, day in zip(cols, forecast_risk):
+        _, color, _ = RISK_LEVELS.get(day["risk_level"], RISK_LEVELS["Moderate"])
+        with col:
+            st.markdown(
+                f"""
+                <div class="card" style="text-align:center;border-top:4px solid {color};padding:.75rem .5rem">
+                  <div style="font-size:.8rem;color:#4E5646;font-weight:600">{day['day_label']}</div>
+                  <div style="font-size:.78rem;color:#7C8571;margin:.15rem 0">{day['description']}</div>
+                  <div style="font-size:1rem;color:var(--ink)">{day['temp_min']:.0f}–{day['temp_max']:.0f}°C</div>
+                  <div style="font-size:.78rem;color:#7C8571">{day['rainfall_total']:.0f}mm rain</div>
+                  <div style="margin-top:.5rem;font-weight:700;color:{color}">{day['risk_level']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    worst = max(forecast_risk, key=lambda d: RISK_LEVELS.get(d["risk_level"], ("", "", 0.5))[2])
+    if RISK_LEVELS.get(worst["risk_level"], ("", "", 0))[2] >= RISK_LEVELS["High"][2]:
+        callout(
+            f"{icon_html('warning', size=18)}<b>{worst['day_label']} looks highest-risk:</b> "
+            f"{worst['explanation']}"
+        )
 
 
 # ---------------------------------------------------------------------------
