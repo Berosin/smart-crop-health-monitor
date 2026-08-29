@@ -17,6 +17,7 @@ import streamlit as st
 from src.db import get_analyses, get_disease_analyses, get_environment_analyses, get_field_scans
 from src.errors import DatabaseError, logger
 from src.health_engine import classify_health_status, HEALTH_STATUS_BANDS
+from src.outbreak_detection import load_outbreak_signals, get_active_alerts
 from utils.ui import (
     page_header,
     callout,
@@ -52,6 +53,8 @@ def render() -> None:
         "Statistics and trends across all crop, disease, and environmental analyses.",
     )
 
+    _render_outbreak_banner()
+
     tab_health, tab_disease, tab_field, tab_env = st.tabs(
         ["Crop Health", "Disease Detection", "Field Scans", "Environmental"]
     )
@@ -65,6 +68,36 @@ def render() -> None:
         _render_env_tab()
 
     footer()
+
+
+def _render_outbreak_banner() -> None:
+    """Compact 'go check Outbreak Alerts' banner, shown above the tabs.
+
+    Reuses src.outbreak_detection end to end — same signal the dedicated
+    Outbreak Alerts page and the Home page banner use — so all three
+    surfaces always agree. Silently skipped on error so a hiccup here
+    never blocks the rest of the dashboard from rendering.
+    """
+    try:
+        signals = load_outbreak_signals(window=7)
+        active = get_active_alerts(signals)
+    except Exception:
+        logger.exception("Unexpected error checking outbreak alerts on dashboard")
+        return
+
+    if not active:
+        return
+
+    crop_list = ", ".join(f"<b>{s['crop']}</b> ({s['risk_level']})" for s in active)
+    st.markdown(
+        f"""
+        <div class="callout" style="border-left-color:#B5564B;background:#FBEFED">
+          {icon_html('diseased', size=18)}<b>{len(active)} crop(s) trending worse</b> — {crop_list}.
+          See the Outbreak Alerts page for details.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------------------

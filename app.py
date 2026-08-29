@@ -13,6 +13,7 @@ import streamlit as st
 from config import APP_CONFIG, get_trained_crops
 from src.db import get_analyses, get_disease_analyses, get_environment_analyses
 from src.errors import DatabaseError, logger
+from src.outbreak_detection import load_outbreak_signals, get_active_alerts
 from utils.ui import (
     inject_custom_css,
     set_page_config,
@@ -27,10 +28,45 @@ from utils.icons import icon_html
 import pages.dashboard as dashboard
 import pages.disease as disease
 import pages.field_scan as field_scan
+import pages.alerts as alerts
 import pages.environment as environment
 import pages.health as health
 import pages.history as history
 import pages.about as about
+
+
+def _render_alert_banner() -> None:
+    """A compact 'go look at this' banner for any crop trending worse.
+
+    Reuses src.outbreak_detection end to end (same module the dedicated
+    Outbreak Alerts page uses) so Home never computes its own, possibly
+    inconsistent, version of the same signal. Failing silently here (rather
+    than showing an error) is intentional — this is a bonus surface, not
+    the primary place to see alerts, so a hiccup here shouldn't block the
+    rest of the home page.
+    """
+    try:
+        signals = load_outbreak_signals(window=7)
+        active = get_active_alerts(signals)
+    except Exception:
+        logger.exception("Unexpected error checking outbreak alerts on home page")
+        return
+
+    if not active:
+        return
+
+    crop_list = ", ".join(f"<b>{s['crop']}</b> ({s['risk_level']})" for s in active)
+    st.markdown(
+        f"""
+        <div class="callout" style="border-left-color:#B5564B;background:#FBEFED">
+          {icon_html('diseased', size=18)}<b>{len(active)} crop(s) trending worse:</b> {crop_list}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("View Outbreak Alerts →", key="_home_view_alerts"):
+        st.session_state["current_page"] = "alerts"
+        st.rerun()
 
 
 def render_home() -> None:
@@ -42,6 +78,8 @@ def render_home() -> None:
     )
 
     trained_crops = get_trained_crops()
+
+    _render_alert_banner()
 
     # Intro
     callout(
@@ -61,6 +99,7 @@ def render_home() -> None:
     feats = [
         ("disease", "Detect diseases", "Upload a leaf image for any supported crop; the trained model reports disease, confidence, and severity."),
         ("field_scan", "Scan a field", "Upload 10-20+ leaf photos from a field walk and get one aggregated field health report."),
+        ("alerts", "Watch for outbreaks", "See which crops are trending worse across your saved analysis history."),
         ("environment", "Track conditions", "Log temperature, humidity, soil moisture and rainfall."),
         ("health", "Score crop health", "Combine the image and environmental signals into one health score."),
         ("dashboard", "Visualize trends", "See stats and charts across all your past analyses."),
@@ -145,6 +184,7 @@ def main() -> None:
         "dashboard":   dashboard.render,
         "disease":     disease.render,
         "field_scan":  field_scan.render,
+        "alerts":      alerts.render,
         "environment": environment.render,
         "health":      health.render,
         "history":     history.render,

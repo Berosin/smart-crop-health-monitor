@@ -39,6 +39,7 @@ ICONS: dict[str, OutlineIcon] = {
     "history":     OutlineIcon.FOLDER,
     "about":       OutlineIcon.INFO_CIRCLE,
     "field_scan":  OutlineIcon.MAP_2,
+    "alerts":      OutlineIcon.ALERT_TRIANGLE,
 
     # Environmental factors
     "temperature": OutlineIcon.THERMOMETER,
