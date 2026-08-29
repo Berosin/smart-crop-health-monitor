@@ -40,7 +40,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from config import CONFIDENCE_THRESHOLD, DEFAULT_DISEASE_CROP, get_trained_crops
-from pages.disease import load_model, preprocess_image, SEVERITY_MAP, CLASS_COLORS
+from pages.disease import load_model, preprocess_image, SEVERITY_MAP, CLASS_COLORS, render_yield_loss_estimator
 from src.db import insert_field_scan
 from src.errors import logger, safe_action
 from src.health_engine import compute_disease_risk_score, classify_health_status
@@ -333,6 +333,22 @@ def _render_report(report: dict) -> None:
                 """,
                 unsafe_allow_html=True,
             )
+
+    # Yield loss / economic impact estimate — for the field's dominant
+    # disease, at a deliberately conservative representative severity (if
+    # any scanned leaf came back High severity, use High rather than
+    # averaging it away — matches this app's general "don't understate
+    # risk" stance, e.g. src/outbreak_detection.py's risk classification).
+    if report["dominant_disease"]:
+        if sc.get("High"):
+            rep_severity = "High"
+        elif sc.get("Moderate"):
+            rep_severity = "Moderate"
+        else:
+            rep_severity = "None"
+        render_yield_loss_estimator(
+            report["crop"], report["dominant_disease"], rep_severity, key_prefix="fieldscan",
+        )
 
     # Per-leaf thumbnail grid
     st.markdown("#### Individual leaves")

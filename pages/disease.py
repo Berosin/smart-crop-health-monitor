@@ -21,12 +21,14 @@ from src.db import insert_disease_analysis
 from src.errors import PredictionError, GradCAMError, logger, safe_action
 from src.gradcam import generate_gradcam, overlay_heatmap
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
+from src.yield_loss import get_yield_loss_range, estimate_yield_loss, REFERENCE_YIELD_T_PER_HA, HECTARES_PER_ACRE
 from utils.ui import (
     page_header,
     callout,
     card,
     footer,
     metric_tile,
+    pretty_name,
     CHART_THEME,
 )
 from utils.icons import icon_html
@@ -445,6 +447,9 @@ def _render_result(pred: dict) -> None:
         unsafe_allow_html=True,
     )
 
+    # Yield loss / economic impact estimate
+    render_yield_loss_estimator(pred["_crop"], pred["disease"], pred["severity"], key_prefix="disease")
+
     # Save to database
     st.markdown("---")
     _render_save_section(pred)
@@ -454,6 +459,92 @@ def _render_result(pred: dict) -> None:
         st.session_state.pop("_disease_saved_token", None)
         st.session_state.pop("_disease_saved_id", None)
         st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Yield loss / economic impact estimator
+#
+# Shared by Disease Detection (this page) and Field Scan (pages/field_scan.py
+# imports this the same way it already imports SEVERITY_MAP/CLASS_COLORS/
+# load_model from here) — one calculator, one place its math can go wrong.
+# All the published-data lookup and arithmetic lives in src/yield_loss.py;
+# this function is presentation only.
+# ---------------------------------------------------------------------------
+def render_yield_loss_estimator(crop: str, disease: str, severity: str, key_prefix: str) -> None:
+    if disease == "Healthy":
+        return  # nothing to estimate
+    if get_yield_loss_range(disease, severity) is None:
+        return  # this disease/severity isn't in the published-data table
+
+    st.markdown("#### Estimated yield loss if untreated")
+    st.caption(
+        f"Based on published agricultural research for {pretty_name(disease)} at "
+        f"{severity.lower()} severity. Adjust the figures below to your own field."
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        unit = st.selectbox("Field size unit", ["Hectares", "Acres"], key=f"_{key_prefix}_yl_unit")
+    with c2:
+        field_size = st.number_input(
+            f"Field size ({unit.lower()})", min_value=0.0, value=1.0, step=0.1,
+            key=f"_{key_prefix}_yl_size",
+        )
+    with c3:
+        default_yield = REFERENCE_YIELD_T_PER_HA.get(crop, 5.0)
+        yield_per_ha = st.number_input(
+            "Expected yield (t/ha if healthy)", min_value=0.0,
+            value=default_yield, step=0.5, key=f"_{key_prefix}_yl_yield",
+            help="Pre-filled with a rough global reference for this crop — "
+                 "replace with your farm's typical yield for a more accurate estimate.",
+        )
+    with c4:
+        price_per_unit = st.number_input(
+            "Price per tonne (optional)", min_value=0.0, value=0.0, step=10.0,
+            key=f"_{key_prefix}_yl_price",
+            help="Leave at 0 to see only the yield-loss estimate, with no revenue figure.",
+        )
+
+    field_size_ha = field_size if unit == "Hectares" else field_size * HECTARES_PER_ACRE
+    est = estimate_yield_loss(disease, severity, field_size_ha, yield_per_ha, price_per_unit)
+    if est is None:
+        return
+
+    low, high = est["loss_pct_low"], est["loss_pct_high"]
+    color = "#B5564B" if high >= 60 else "#C97A3B" if high >= 30 else "#D6A34B"
+
+    revenue_html = ""
+    if est["revenue_lost_low"] is not None:
+        revenue_html = (
+            f'<div style="margin-top:.5rem;font-size:1.15rem;font-weight:700;color:{color}">'
+            f'≈ {est["revenue_lost_low"]:,.0f} – {est["revenue_lost_high"]:,.0f} estimated revenue at risk'
+            f'</div>'
+        )
+
+    st.markdown(
+        f"""
+        <div class="card" style="border-left:5px solid {color}">
+          <div style="font-size:1.5rem;font-weight:700;color:var(--ink)">{low:.0f}–{high:.0f}% yield loss</div>
+          <div style="color:#4E5646;margin-top:.3rem">
+            ≈ {est['yield_lost_low']:.1f}–{est['yield_lost_high']:.1f} t on your {field_size_ha:.2f} ha field
+            (expected {est['expected_yield']:.1f} t if healthy)
+          </div>
+          {revenue_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+        <div style="font-size:.78rem;color:#5B6353;margin-top:.4rem">
+          {icon_html('info', size=14, margin_right='.3em')}
+          Planning estimate from published crop-disease research, not a guarantee — actual
+          loss depends on variety, timing of infection, weather, and management. Not financial advice.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Explainability — Grad-CAM
@@ -505,6 +596,7 @@ def _render_gradcam(pred: dict) -> None:
         """,
         unsafe_allow_html=True,
     )
+
 
 # ---------------------------------------------------------------------------
 # Save to database
