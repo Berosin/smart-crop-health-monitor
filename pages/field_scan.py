@@ -32,6 +32,7 @@ Detection page.
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from collections import Counter
 
@@ -45,6 +46,7 @@ from src.db import insert_field_scan
 from src.errors import logger, safe_action
 from src.health_engine import compute_disease_risk_score, classify_health_status
 from src.image_preprocessing import ImageValidationError
+from src.yield_loss import get_yield_loss_range, estimate_yield_loss, REFERENCE_YIELD_T_PER_HA, HECTARES_PER_ACRE
 from utils.ui import (
     page_header, callout, card, footer, metric_tile, health_score_card, pretty_name, CHART_THEME,
 )
@@ -339,6 +341,7 @@ def _render_report(report: dict) -> None:
     # any scanned leaf came back High severity, use High rather than
     # averaging it away — matches this app's general "don't understate
     # risk" stance, e.g. src/outbreak_detection.py's risk classification).
+    rep_severity = None
     if report["dominant_disease"]:
         if sc.get("High"):
             rep_severity = "High"
@@ -373,6 +376,10 @@ def _render_report(report: dict) -> None:
                 )
 
     _render_failures(report["failures"])
+
+    # PDF report export
+    st.markdown("---")
+    _render_pdf_download(report, rep_severity)
 
     st.markdown("---")
     _render_save_section(report)
@@ -413,6 +420,48 @@ def _build_field_scan_record(report: dict) -> dict:
         "severity_breakdown": json.dumps(report["severity_counts"]),
         "disease_breakdown": json.dumps(report["disease_counts"]),
     }
+
+
+# ---------------------------------------------------------------------------
+# PDF report export
+# ---------------------------------------------------------------------------
+def _render_pdf_download(report: dict, rep_severity: str | None) -> None:
+    """A downloadable, farmer-shareable PDF for this field scan.
+
+    Reuses whatever the yield-loss calculator above is currently set to
+    (field size/yield/price, kept in session_state under the same
+    `_fieldscan_yl_*` keys render_yield_loss_estimator() writes), the same
+    pattern pages/disease.py's PDF export uses.
+    """
+    from src.report_generator import generate_field_scan_report_pdf
+
+    yield_loss_estimate = None
+    if report["dominant_disease"] and rep_severity and get_yield_loss_range(report["dominant_disease"], rep_severity) is not None:
+        unit = st.session_state.get("_fieldscan_yl_unit", "Hectares")
+        size = st.session_state.get("_fieldscan_yl_size", 1.0)
+        yield_per_ha = st.session_state.get("_fieldscan_yl_yield", REFERENCE_YIELD_T_PER_HA.get(report["crop"], 5.0))
+        price = st.session_state.get("_fieldscan_yl_price", 0.0)
+        field_size_ha = size if unit == "Hectares" else size * HECTARES_PER_ACRE
+        yield_loss_estimate = estimate_yield_loss(
+            report["dominant_disease"], rep_severity, field_size_ha, yield_per_ha, price,
+        )
+
+    try:
+        pdf_bytes = generate_field_scan_report_pdf(report, yield_loss_estimate=yield_loss_estimate)
+    except Exception:
+        logger.exception("Unexpected error generating field scan PDF report")
+        st.error("Couldn't generate the PDF report right now. Please try again.")
+        return
+
+    file_name = f"field_scan_{report['crop'].lower()}_{int(time.time())}.pdf"
+    st.download_button(
+        "Download PDF Report",
+        data=pdf_bytes,
+        file_name=file_name,
+        mime="application/pdf",
+        use_container_width=True,
+        key="_fieldscan_pdf_download",
+    )
 
 
 def _render_save_section(report: dict) -> None:

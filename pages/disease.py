@@ -450,6 +450,10 @@ def _render_result(pred: dict) -> None:
     # Yield loss / economic impact estimate
     render_yield_loss_estimator(pred["_crop"], pred["disease"], pred["severity"], key_prefix="disease")
 
+    # PDF report export
+    st.markdown("---")
+    _render_pdf_download(pred)
+
     # Save to database
     st.markdown("---")
     _render_save_section(pred)
@@ -459,6 +463,49 @@ def _render_result(pred: dict) -> None:
         st.session_state.pop("_disease_saved_token", None)
         st.session_state.pop("_disease_saved_id", None)
         st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# PDF report export
+# ---------------------------------------------------------------------------
+def _render_pdf_download(pred: dict) -> None:
+    """A downloadable, farmer-shareable PDF for this one result.
+
+    Reuses whatever the yield-loss calculator above is currently set to
+    (field size/yield/price, kept in session_state under the same
+    `_disease_yl_*` keys render_yield_loss_estimator() writes) so the PDF
+    reflects the numbers actually on screen, without asking the person to
+    re-enter anything. If the calculator was never opened for this result
+    (e.g. the crop is Healthy, so it never rendered), the report simply
+    omits that section — src.report_generator handles a None estimate.
+    """
+    from src.report_generator import generate_disease_report_pdf
+
+    yield_loss_estimate = None
+    if get_yield_loss_range(pred["disease"], pred["severity"]) is not None:
+        unit = st.session_state.get("_disease_yl_unit", "Hectares")
+        size = st.session_state.get("_disease_yl_size", 1.0)
+        yield_per_ha = st.session_state.get("_disease_yl_yield", REFERENCE_YIELD_T_PER_HA.get(pred["_crop"], 5.0))
+        price = st.session_state.get("_disease_yl_price", 0.0)
+        field_size_ha = size if unit == "Hectares" else size * HECTARES_PER_ACRE
+        yield_loss_estimate = estimate_yield_loss(pred["disease"], pred["severity"], field_size_ha, yield_per_ha, price)
+
+    try:
+        pdf_bytes = generate_disease_report_pdf(pred, yield_loss_estimate=yield_loss_estimate)
+    except Exception:
+        logger.exception("Unexpected error generating PDF report")
+        st.error("Couldn't generate the PDF report right now. Please try again.")
+        return
+
+    file_name = f"crop_diagnosis_{pred['_crop'].lower()}_{pred['disease'].lower()}_{int(time.time())}.pdf"
+    st.download_button(
+        "Download PDF Report",
+        data=pdf_bytes,
+        file_name=file_name,
+        mime="application/pdf",
+        use_container_width=True,
+        key="_disease_pdf_download",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -33,5 +33,8 @@ Pillow>=10.2.0
 # Live weather integration (src/weather.py — OpenWeatherMap client)
 requests>=2.31.0
 
+# PDF report export (src/report_generator.py)
+reportlab>=4.1.0
+
 # Icons (Tabler Icons rendered as images for the UI)
 pytablericons>=1.0.1
