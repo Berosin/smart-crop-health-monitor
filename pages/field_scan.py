@@ -40,12 +40,14 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from config import CONFIDENCE_THRESHOLD, DEFAULT_DISEASE_CROP, get_trained_crops
+from config import CONFIDENCE_THRESHOLD, DEFAULT_DISEASE_CROP, get_trained_crops, get_model_dir
 from pages.disease import load_model, preprocess_image, SEVERITY_MAP, CLASS_COLORS, render_yield_loss_estimator
 from src.db import insert_field_scan
 from src.errors import logger, safe_action
 from src.health_engine import compute_disease_risk_score, classify_health_status
 from src.image_preprocessing import ImageValidationError
+from src.ood_detection import compute_ood_signal
+from src.ood_feature_detector import load_stats as load_embedding_stats, compute_feature_ood_signal
 from src.yield_loss import get_yield_loss_range, estimate_yield_loss, REFERENCE_YIELD_T_PER_HA, HECTARES_PER_ACRE
 from utils.ui import (
     page_header, callout, card, footer, metric_tile, health_score_card, pretty_name, CHART_THEME,
@@ -206,7 +208,22 @@ def _run_field_scan(model, class_names, uploaded_files, crop, threshold, denoise
         with st.spinner(f"Running disease detection on {len(batches)} photo(s)…"):
             preds = model.predict(stacked, verbose=0)
 
-        for meta, row in zip(thumbs_and_names, preds):
+        predicted_diseases = [class_names[int(np.argmax(row))] for row in preds]
+
+        # Feature-space "is this even a leaf?" check (src/ood_feature_detector.py)
+        # — only runs if this crop has an exported embedding_stats.npz;
+        # skipped entirely (falls back to softmax-only detection) otherwise.
+        # One batched embedding-model pass for the whole scan, same
+        # batching approach as the main prediction above.
+        feature_ood_signals = [None] * len(predicted_diseases)
+        stats = load_embedding_stats(crop, get_model_dir(crop))
+        if stats is not None:
+            with st.spinner("Checking image plausibility…"):
+                feature_ood_signals = compute_feature_ood_signals_batch(
+                    model, stacked, predicted_diseases, stats,
+                )
+
+        for meta, row, feature_ood in zip(thumbs_and_names, preds, feature_ood_signals):
             pred_idx = int(np.argmax(row))
             confidence = float(row[pred_idx])
             disease = class_names[pred_idx]
@@ -216,6 +233,14 @@ def _run_field_scan(model, class_names, uploaded_files, crop, threshold, denoise
             # the Crop Health Analysis page, so the field score below means
             # the same thing a single-leaf health score means elsewhere.
             score, _, _ = compute_disease_risk_score(disease, confidence, severity)
+            # "Is this even a leaf?" — `row` is already this leaf's full
+            # softmax vector (no extra inference needed), so the same
+            # uncertainty check the Disease Detection page runs per-photo
+            # comes essentially free here too. Combined with the
+            # feature-space check above (when available) the same way
+            # pages/disease.py combines them.
+            ood_signal = compute_ood_signal(row)
+            is_ood = ood_signal["is_likely_ood"] or bool(feature_ood and feature_ood["is_likely_ood"])
             leaves.append({
                 "name": meta["name"],
                 "thumb": meta["thumb"],
@@ -225,6 +250,7 @@ def _run_field_scan(model, class_names, uploaded_files, crop, threshold, denoise
                 "is_healthy": is_healthy,
                 "low_confidence": confidence < threshold and not is_healthy,
                 "score": score,
+                "ood_signal": {**ood_signal, "is_likely_ood": is_ood},
             })
 
     return _aggregate(leaves, failures, crop)
@@ -238,7 +264,7 @@ def _aggregate(leaves: list[dict], failures: list[tuple[str, str]], crop: str) -
             "crop": crop, "leaves": [], "failures": failures, "n_total": 0,
             "n_healthy": 0, "n_diseased": 0, "healthy_pct": 0.0,
             "dominant_disease": None, "disease_counts": {}, "severity_counts": {},
-            "field_health_score": None, "field_status": None,
+            "field_health_score": None, "field_status": None, "n_uncertain": 0,
         }
 
     n_healthy = sum(1 for l in leaves if l["is_healthy"])
@@ -254,6 +280,14 @@ def _aggregate(leaves: list[dict], failures: list[tuple[str, str]], crop: str) -
     field_health_score = int(round(sum(l["score"] for l in leaves) / n))
     field_status = classify_health_status(field_health_score)
 
+    # "Is this even a leaf?" — count leaves the model itself flagged as
+    # uncertain. Deliberately NOT excluded from disease_counts/dominant_disease/
+    # field_health_score above — that would mean silently rewriting the
+    # field's own numbers based on a heuristic. Instead this is surfaced as
+    # a visible caveat (see _render_report's warning banner) so the person
+    # can judge for themselves rather than the app quietly deciding for them.
+    n_uncertain = sum(1 for l in leaves if l.get("ood_signal", {}).get("is_likely_ood"))
+
     return {
         "crop": crop,
         "leaves": leaves,
@@ -267,6 +301,7 @@ def _aggregate(leaves: list[dict], failures: list[tuple[str, str]], crop: str) -
         "severity_counts": dict(severity_counts),
         "field_health_score": field_health_score,
         "field_status": field_status,
+        "n_uncertain": n_uncertain,
         "_scan_token": uuid.uuid4().hex,
     }
 
@@ -282,6 +317,14 @@ def _render_report(report: dict) -> None:
         )
         _render_failures(report["failures"])
         return
+
+    if report.get("n_uncertain"):
+        callout(
+            f"{icon_html('warning', size=18)}<b>{report['n_uncertain']} of {report['n_total']} "
+            f"photo(s) didn't look like confident leaf matches</b> — flagged below with a "
+            "muted border. They're still included in the counts and charts here, but treat "
+            "those specific results as unreliable and consider re-scanning them."
+        )
 
     # KPI row
     c1, c2, c3, c4 = st.columns(4)
@@ -362,14 +405,18 @@ def _render_report(report: dict) -> None:
         cols = st.columns(n_cols)
         for col, leaf in zip(cols, row):
             with col:
-                border = "#7FA687" if leaf["is_healthy"] else SEVERITY_COLORS.get(leaf["severity"], "#B5564B")
+                is_uncertain = leaf.get("ood_signal", {}).get("is_likely_ood")
+                border = "#93998A" if is_uncertain else (
+                    "#7FA687" if leaf["is_healthy"] else SEVERITY_COLORS.get(leaf["severity"], "#B5564B")
+                )
                 st.image(leaf["thumb"], use_container_width=True)
                 low_conf_note = " · low confidence" if leaf["low_confidence"] else ""
+                uncertain_note = f" {icon_html('warning', size=12, margin_right='.2em')}uncertain match" if is_uncertain else ""
                 st.markdown(
                     f"""
                     <div style="border-left:4px solid {border};padding:.15rem .5rem;
                                 font-size:.78rem;color:#4E5646;margin:-.4rem 0 .8rem">
-                      <b>{pretty_name(leaf['disease'])}</b><br/>{leaf['confidence']*100:.0f}% confidence{low_conf_note}
+                      <b>{pretty_name(leaf['disease'])}</b><br/>{leaf['confidence']*100:.0f}% confidence{low_conf_note}{uncertain_note}
                     </div>
                     """,
                     unsafe_allow_html=True,

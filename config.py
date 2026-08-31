@@ -66,6 +66,17 @@ def get_trained_crops() -> list[str]:
     return [crop for crop, paths in DISEASE_MODELS.items() if os.path.exists(paths["model_path"])]
 
 
+def get_model_dir(crop: str) -> str:
+    """The folder a crop's model.keras/labels.json (and optionally
+    embedding_stats.npz — see colab/export_embedding_stats.py) live in.
+    Returns "" for a crop not in DISEASE_MODELS.
+    """
+    import os
+    if crop not in DISEASE_MODELS:
+        return ""
+    return os.path.dirname(DISEASE_MODELS[crop]["model_path"])
+
+
 ENV_MODEL_DIR = "models/environment_model"
 ENV_MODEL_PATH = "models/environment_model/model.joblib"
 ENV_MODEL_METADATA_PATH = "models/environment_model/metadata.json"

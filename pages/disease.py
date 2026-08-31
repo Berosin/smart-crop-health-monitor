@@ -15,12 +15,14 @@ import plotly.graph_objects as go
 import streamlit as st
 import tensorflow as tf
 
-from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, DISEASE_MODELS, DEFAULT_DISEASE_CROP, UPLOAD_DIR, get_trained_crops
+from config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, DISEASE_MODELS, DEFAULT_DISEASE_CROP, UPLOAD_DIR, get_trained_crops, get_model_dir
 from src.dataset_prep import load_class_names
 from src.db import insert_disease_analysis
 from src.errors import PredictionError, GradCAMError, logger, safe_action
 from src.gradcam import generate_gradcam, overlay_heatmap
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
+from src.ood_detection import compute_ood_signal
+from src.ood_feature_detector import load_stats as load_embedding_stats, compute_feature_ood_signal
 from src.yield_loss import get_yield_loss_range, estimate_yield_loss, REFERENCE_YIELD_T_PER_HA, HECTARES_PER_ACRE
 from utils.ui import (
     page_header,
@@ -141,7 +143,7 @@ def preprocess_image(uploaded_file, target_size=IMAGE_SIZE,
     )
 
 
-def predict_disease(model, class_names, image_batch, confidence_threshold=CONFIDENCE_THRESHOLD):
+def predict_disease(model, class_names, image_batch, confidence_threshold=CONFIDENCE_THRESHOLD, crop=None):
     """Run inference and return prediction dict."""
     try:
         # Run inference
@@ -169,6 +171,32 @@ def predict_disease(model, class_names, image_batch, confidence_threshold=CONFID
         is_healthy = (disease == "Healthy")
         low_confidence = confidence < confidence_threshold and not is_healthy
 
+        # "Is this even a leaf?" — two independent, complementary checks:
+        #
+        # 1. Softmax-based (src/ood_detection.py): flags predictions the
+        #    model itself isn't confident about (low top probability
+        #    and/or a flat distribution across all classes).
+        #
+        # 2. Feature-space (src/ood_feature_detector.py), only for crops
+        #    with an exported embedding_stats.npz: flags predictions the
+        #    softmax check CANNOT catch — a network confidently predicting
+        #    a wrong class on an image far outside its training
+        #    distribution (e.g. a hand photo scoring 94% on a disease
+        #    class). Skipped entirely for a crop that hasn't had
+        #    colab/export_embedding_stats.py run for it yet — falls back
+        #    to softmax-only detection for that crop, same as before.
+        ood_signal = compute_ood_signal(preds)
+        feature_ood_signal = None
+        if crop:
+            stats = load_embedding_stats(crop, get_model_dir(crop))
+            if stats is not None:
+                feature_ood_signal = compute_feature_ood_signal(model, image_batch, disease, stats)
+
+        is_ood = ood_signal["is_likely_ood"] or bool(feature_ood_signal and feature_ood_signal["is_likely_ood"])
+        ood_reasons = [ood_signal["reason"]] if ood_signal["is_likely_ood"] else []
+        if feature_ood_signal and feature_ood_signal["is_likely_ood"]:
+            ood_reasons.append(feature_ood_signal["reason"])
+
         return {
             "disease": disease,
             "confidence": confidence,
@@ -178,6 +206,10 @@ def predict_disease(model, class_names, image_batch, confidence_threshold=CONFID
             "is_healthy": is_healthy,
             "low_confidence": low_confidence,
             "threshold": confidence_threshold,
+            "ood_signal": ood_signal,
+            "feature_ood_signal": feature_ood_signal,
+            "is_ood": is_ood,
+            "ood_reasons": ood_reasons,
         }
     except Exception as e:
         logger.exception("Disease prediction failed")
@@ -302,7 +334,7 @@ def render() -> None:
 
                 # Run inference with loading indicator
                 with st.spinner("Running disease detection…"):
-                    pred = predict_disease(model, class_names, image_batch, threshold)
+                    pred = predict_disease(model, class_names, image_batch, threshold, crop=crop)
 
                 # Explainability: Grad-CAM heatmap over the same image batch
                 # that was just classified, explaining the top prediction.
@@ -367,19 +399,59 @@ def render() -> None:
 # ---------------------------------------------------------------------------
 # Result rendering
 # ---------------------------------------------------------------------------
+def _render_ood_warning(ood_reasons: list[str]) -> None:
+    """"Is this even a leaf?" banner — shown when either uncertainty check
+    fires: softmax-based (src/ood_detection.py, catches the model being
+    *unsure*) and/or feature-space (src/ood_feature_detector.py, catches
+    the model being confidently *wrong* — e.g. a hand photo scoring 94% on
+    a disease class, which the softmax check alone cannot see). Deliberately
+    louder/more prominent than the existing low_confidence caveat: this
+    fires independent of the confidence-threshold slider and of which
+    class won.
+    """
+    reasons_html = " ".join(ood_reasons)
+    st.markdown(
+        f"""
+        <div style="background:#FBEFED;border-left:5px solid #B5564B;
+                    border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem">
+          <div style="font-size:1.05rem;font-weight:700;color:#7C3730">
+            {icon_html('warning', size=20, margin_right='.4em')}This doesn't look like a confident leaf match
+          </div>
+          <div style="font-size:.85rem;color:#5B6353;margin-top:.35rem">
+            {reasons_html} Try a clearer, closer photo of a single leaf
+            against a plain background — the result below is shown for
+            reference, but treat it as unreliable.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_result(pred: dict) -> None:
     """Render the full prediction result block."""
+    is_ood = bool(pred.get("is_ood"))
+
+    if is_ood:
+        _render_ood_warning(pred.get("ood_reasons") or [])
+
     # Banner
     sev_color, sev_action = SEVERITY_META.get(pred["severity"], ("#93998A", "Unknown"))
     banner_bg = "#EAEFE2" if pred["is_healthy"] else "#F4EAD9"
     banner_border = "#7FA687" if pred["is_healthy"] else sev_color
+    if is_ood:
+        # Same layout, muted/gray instead of the usual healthy-green or
+        # severity-colored treatment — visually signals "don't trust this
+        # verdict at face value" without hiding what the model actually
+        # said.
+        banner_bg, banner_border = "#EDEDE8", "#93998A"
     st.markdown(
         f"""
         <div style="background:{banner_bg};border-left:5px solid {banner_border};
                     border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem">
           <div style="font-size:.8rem;color:#4E5646;text-transform:uppercase;
-                      letter-spacing:.04em">Detected condition</div>
-          <div style="font-size:1.5rem;font-weight:700;color:{pred['color'] if 'color' in pred else CLASS_COLORS.get(pred['disease'], '#23291F')}">
+                      letter-spacing:.04em">Detected condition{' (uncertain)' if is_ood else ''}</div>
+          <div style="font-size:1.5rem;font-weight:700;color:{'#7C8571' if is_ood else pred.get('color', CLASS_COLORS.get(pred['disease'], '#23291F'))}">
             {pred['disease']}
           </div>
           <div style="font-size:.85rem;color:#5B6353">{sev_action}</div>
