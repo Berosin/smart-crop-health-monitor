@@ -103,29 +103,35 @@ def compute_disease_risk_score(
     disease_prediction: str,
     disease_confidence: float,
     disease_severity: str,
+    lang: str = "en",
 ) -> tuple[int, str, bool]:
     """Score the disease signal on a 0-100 scale (100 = no disease risk).
 
     Returns (score, explanation, is_healthy).
     """
+    from src.i18n import tr_template, tr_disease, tr_label
+
     confidence = _clamp01(disease_confidence)
     is_healthy = (str(disease_prediction).strip().lower() == "healthy"
                   or disease_severity == "None")
+    disease_label = tr_disease(disease_prediction, lang)
 
     if is_healthy:
         # A confident "healthy" call is reassuring; an unsure one still
         # leaves some doubt, so it's scored slightly lower.
         score = 85 + 15 * confidence
-        explanation = (
-            f"Model predicts '{disease_prediction}' with {confidence*100:.0f}% confidence — "
-            "no disease penalty applied."
+        explanation = tr_template(
+            "Model predicts '{disease}' with {confidence}% confidence — no disease penalty applied.",
+            lang, disease=disease_label, confidence=f"{confidence*100:.0f}",
         )
     else:
         sev_weight = SEVERITY_WEIGHTS.get(disease_severity, 0.6)
         score = 100 - (sev_weight * 70) - (confidence * 30)
-        explanation = (
-            f"'{disease_prediction}' detected at {disease_severity} severity with "
-            f"{confidence*100:.0f}% confidence — both severity and confidence increase risk."
+        severity_label = tr_label(disease_severity, lang) if lang == "ta" else disease_severity
+        explanation = tr_template(
+            "'{disease}' detected at {severity} severity with {confidence}% confidence — "
+            "both severity and confidence increase risk.",
+            lang, disease=disease_label, severity=severity_label, confidence=f"{confidence*100:.0f}",
         )
 
     return int(round(_clamp(score))), explanation, is_healthy
@@ -138,26 +144,29 @@ def compute_environmental_risk_score(
     environmental_risk: str,
     environmental_probability: float | None = None,
     environmental_probabilities: dict[str, float] | None = None,
+    lang: str = "en",
 ) -> tuple[int, str]:
     """Score the environmental signal on a 0-100 scale (100 = no risk).
 
     Returns (score, explanation).
     """
+    from src.i18n import tr_template, tr_label
+
     if environmental_probabilities:
         score = sum(
             ENV_RISK_ANCHORS.get(label, 50) * prob
             for label, prob in environmental_probabilities.items()
         )
-        basis = "a probability-weighted average across all predicted risk classes"
+        basis = tr_template("a probability-weighted average across all predicted risk classes", lang)
     else:
         score = ENV_RISK_ANCHORS.get(environmental_risk, 50)
-        basis = "the single predicted risk class"
+        basis = tr_template("the single predicted risk class", lang)
 
     conf_text = (f" ({environmental_probability*100:.0f}% model confidence)"
                  if environmental_probability is not None else "")
-    explanation = (
-        f"Environmental risk classified as {environmental_risk}{conf_text}, "
-        f"scored using {basis}."
+    explanation = tr_template(
+        "Environmental risk classified as {risk}{conf_text}, scored using {basis}.",
+        lang, risk=tr_label(environmental_risk, lang), conf_text=conf_text, basis=basis,
     )
     return int(round(_clamp(score))), explanation
 
@@ -183,8 +192,10 @@ def classify_health_status(score: int) -> str:
 # ---------------------------------------------------------------------------
 # 4. Recommendation + explanation builders
 # ---------------------------------------------------------------------------
-def _out_of_range_factors(crop: str | None, readings: dict[str, float]) -> list[str]:
+def _out_of_range_factors(crop: str | None, readings: dict[str, float], lang: str = "en") -> list[str]:
     """Which of the four readings fall outside `crop`'s ideal band, and how."""
+    from src.i18n import tr_env_tip
+
     if not crop or crop not in ENV_CROP_RANGES:
         return []
     tips: list[str] = []
@@ -198,9 +209,10 @@ def _out_of_range_factors(crop: str | None, readings: dict[str, float]) -> list[
             continue
         status = "Low" if value < opt_min and value >= low else \
                  "High" if value > opt_max and value <= high else "Extreme"
-        tip = TIPS.get(key, {}).get(status)
-        if tip:
-            tips.append(tip.format(crop=crop.lower()))
+        english_tip = TIPS.get(key, {}).get(status)
+        if english_tip:
+            english_tip = english_tip.format(crop=crop.lower())
+            tips.append(tr_env_tip(key, status, crop, lang, fallback=english_tip))
     return tips
 
 
@@ -212,25 +224,29 @@ def _build_recommendation(
     crop: str | None,
     readings: dict[str, float],
     status: str,
+    lang: str = "en",
 ) -> str:
+    from src.i18n import tr_template
+
     parts: list[str] = []
 
-    parts.append(disease_recommendation or FALLBACK_DISEASE_ADVICE.get(
+    fallback_advice = FALLBACK_DISEASE_ADVICE.get(
         disease_severity, FALLBACK_DISEASE_ADVICE["None" if is_healthy else "Moderate"]
-    ))
+    )
+    parts.append(disease_recommendation or tr_template(fallback_advice, lang))
 
     if environmental_recommendation:
         parts.append(environmental_recommendation)
     else:
-        parts.extend(_out_of_range_factors(crop, readings))
+        parts.extend(_out_of_range_factors(crop, readings, lang=lang))
 
-    closing = {
+    closing_en = {
         "Healthy":  "Overall health is good — maintain current practices and keep monitoring.",
         "Moderate": "Overall health is moderate — monitor closely and make incremental adjustments.",
         "At Risk":  "Overall health is at risk — address the largest contributing factor first and recheck within a few days.",
         "Critical": "Overall health is critical — prioritize immediate intervention on both disease and environmental factors.",
     }[status]
-    parts.append(closing)
+    parts.append(tr_template(closing_en, lang))
 
     return " ".join(parts)
 
@@ -239,13 +255,21 @@ def _build_explanation(
     disease_score: int, disease_explanation: str,
     environmental_score: int, environmental_explanation: str,
     health_score: int, status: str, weights: dict[str, float],
+    lang: str = "en",
 ) -> str:
-    return (
-        f"{disease_explanation} This contributes a disease score of {disease_score}/100. "
-        f"{environmental_explanation} This contributes an environmental score of "
-        f"{environmental_score}/100. Weighted {weights['disease']*100:.0f}% disease / "
-        f"{weights['environmental']*100:.0f}% environment, the overall health score is "
-        f"{health_score}/100, classified as '{status}'."
+    from src.i18n import tr_template, tr_label
+
+    return tr_template(
+        "{disease_explanation} This contributes a disease score of {disease_score}/100. "
+        "{environmental_explanation} This contributes an environmental score of "
+        "{environmental_score}/100. Weighted {disease_weight}% disease / "
+        "{environmental_weight}% environment, the overall health score is "
+        "{health_score}/100, classified as '{status}'.",
+        lang,
+        disease_explanation=disease_explanation, disease_score=disease_score,
+        environmental_explanation=environmental_explanation, environmental_score=environmental_score,
+        disease_weight=f"{weights['disease']*100:.0f}", environmental_weight=f"{weights['environmental']*100:.0f}",
+        health_score=health_score, status=tr_label(status, lang),
     )
 
 
@@ -268,6 +292,7 @@ def analyze_crop_health(
     disease_recommendation: str | None = None,
     environmental_recommendation: str | None = None,
     weights: dict[str, float] = WEIGHTS,
+    lang: str = "en",
 ) -> dict[str, Any]:
     """Combine a disease result and an environmental risk result into one
     explainable crop health assessment.
@@ -309,10 +334,10 @@ def analyze_crop_health(
     }
 
     disease_score, disease_explanation, is_healthy = compute_disease_risk_score(
-        disease_prediction, disease_confidence, disease_severity,
+        disease_prediction, disease_confidence, disease_severity, lang=lang,
     )
     environmental_score, environmental_explanation = compute_environmental_risk_score(
-        environmental_risk, environmental_probability, environmental_probabilities,
+        environmental_risk, environmental_probability, environmental_probabilities, lang=lang,
     )
 
     health_score = compute_health_score(disease_score, environmental_score, weights)
@@ -320,11 +345,11 @@ def analyze_crop_health(
 
     recommendation = _build_recommendation(
         disease_severity, is_healthy, disease_recommendation,
-        environmental_recommendation, crop, readings, health_status,
+        environmental_recommendation, crop, readings, health_status, lang=lang,
     )
     explanation = _build_explanation(
         disease_score, disease_explanation, environmental_score,
-        environmental_explanation, health_score, health_status, weights,
+        environmental_explanation, health_score, health_status, weights, lang=lang,
     )
 
     return {

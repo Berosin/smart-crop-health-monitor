@@ -350,11 +350,21 @@ def _validate_input(data: dict) -> None:
 
 
 def _build_explanation(crop: str, statuses: dict[str, str], data: dict,
-                        risk_level: str, probability: float) -> str:
+                        risk_level: str, probability: float, lang: str = "en") -> str:
+    from src.i18n import tr_crop, tr_label
+
     ranges = ENV_CROP_RANGES[crop]
     off_range = [k for k, s in statuses.items() if s != "Optimal"]
+    crop_label = tr_crop(crop, lang)
+    risk_label = tr_label(risk_level, lang)
 
     if not off_range:
+        if lang == "ta":
+            return (
+                f"கணிக்கப்பட்ட ஆபத்து: {risk_label} ({probability*100:.0f}% நம்பகத்தன்மை). "
+                f"நான்கு அளவீடுகளும் {crop_label}-இன் சிறந்த வரம்பிற்குள் உள்ளன, எனவே இந்த "
+                "அளவீட்டில் மாதிரி எந்த அழுத்த சமிக்ஞையையும் கண்டறியவில்லை."
+            )
         return (
             f"Predicted risk: {risk_level} ({probability*100:.0f}% confidence). "
             f"All four readings fall inside {crop}'s ideal range, so the model "
@@ -365,10 +375,18 @@ def _build_explanation(crop: str, statuses: dict[str, str], data: dict,
     for key in off_range:
         opt_min, opt_max = ranges[key][1], ranges[key][2]
         unit = ENV_RANGES[key]["unit"]
+        label = tr_label(FACTOR_LABELS[key], lang)
         parts.append(
-            f"{FACTOR_LABELS[key]} ({data[key]:.1f}{unit}, ideal {opt_min}-{opt_max}{unit})"
+            f"{label} ({data[key]:.1f}{unit}, {'சிறந்தது' if lang == 'ta' else 'ideal'} {opt_min}-{opt_max}{unit})"
         )
     factor_text = "; ".join(parts)
+
+    if lang == "ta":
+        return (
+            f"கணிக்கப்பட்ட ஆபத்து: {risk_label} ({probability*100:.0f}% நம்பகத்தன்மை). "
+            f"4-இல் {len(off_range)} அளவீடு(கள்) {crop_label}-இன் சிறந்த வரம்பிற்கு வெளியே "
+            f"உள்ளன — {factor_text}. இவையே ஆபத்து மதிப்பெண்ணை இயக்கும் காரணிகள்."
+        )
     return (
         f"Predicted risk: {risk_level} ({probability*100:.0f}% confidence). "
         f"{len(off_range)} of 4 reading(s) fall outside {crop}'s ideal range — "
@@ -376,23 +394,31 @@ def _build_explanation(crop: str, statuses: dict[str, str], data: dict,
     )
 
 
-def _build_recommendation(crop: str, statuses: dict[str, str]) -> str:
+def _build_recommendation(crop: str, statuses: dict[str, str], lang: str = "en") -> str:
+    from src.i18n import tr_env_tip, tr_env_all_optimal
+
     tips = []
     for key, status in statuses.items():
         if status != "Optimal" and status in TIPS[key]:
-            tips.append(TIPS[key][status].format(crop=crop.lower()))
+            english_tip = TIPS[key][status].format(crop=crop.lower())
+            tips.append(tr_env_tip(key, status, crop, lang, fallback=english_tip))
     if not tips:
-        return (f"All environmental factors are within the ideal range for {crop}. "
-                "Maintain current practices and keep monitoring.")
+        english_fallback = (f"All environmental factors are within the ideal range for {crop}. "
+                             "Maintain current practices and keep monitoring.")
+        return tr_env_all_optimal(crop, lang, fallback=english_fallback)
     return " ".join(tips)
 
 
-def predict_environmental_risk(data: dict) -> dict[str, Any]:
+def predict_environmental_risk(data: dict, lang: str = "en") -> dict[str, Any]:
     """Predict environmental crop risk for one reading.
 
     Args:
         data: {"crop": str, "temperature": float, "humidity": float,
                "soil_moisture": float, "rainfall": float}
+        lang: "en" or "ta" — see src/i18n.py. Translates the risk level,
+            explanation sentence, and recommendation tips; "model_used" and
+            the raw probabilities dict stay as-is (internal/model identifiers,
+            not farmer-facing prose).
 
     Returns:
         {
@@ -424,8 +450,8 @@ def predict_environmental_risk(data: dict) -> dict[str, Any]:
         "risk_level": predicted,
         "probability": probability,
         "probabilities": dict(sorted(probabilities.items(), key=lambda kv: -kv[1])),
-        "explanation": _build_explanation(crop, statuses, row, predicted, probability),
-        "recommendation": _build_recommendation(crop, statuses),
+        "explanation": _build_explanation(crop, statuses, row, predicted, probability, lang=lang),
+        "recommendation": _build_recommendation(crop, statuses, lang=lang),
         "model_used": metadata.get("selected_model", "unknown"),
     }
 

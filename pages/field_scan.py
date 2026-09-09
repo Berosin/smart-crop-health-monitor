@@ -42,6 +42,7 @@ import streamlit as st
 
 from config import CONFIDENCE_THRESHOLD, DEFAULT_DISEASE_CROP, get_trained_crops, get_model_dir
 from pages.disease import load_model, preprocess_image, SEVERITY_MAP, CLASS_COLORS, render_yield_loss_estimator
+from src.i18n import get_language, tr_crop, tr_disease, tr_severity, tr_label
 from src.db import insert_field_scan
 from src.errors import logger, safe_action
 from src.health_engine import compute_disease_risk_score, classify_health_status
@@ -310,6 +311,8 @@ def _aggregate(leaves: list[dict], failures: list[tuple[str, str]], crop: str) -
 # Report rendering
 # ---------------------------------------------------------------------------
 def _render_report(report: dict) -> None:
+    lang = get_language()
+
     if report["n_total"] == 0:
         callout(
             f"{icon_html('warning', size=18)}None of the uploaded photos could "
@@ -334,7 +337,7 @@ def _render_report(report: dict) -> None:
         metric_tile("Healthy", f"{report['healthy_pct']:.0f}%",
                      f"{report['n_healthy']} / {report['n_total']} leaves")
     with c3:
-        metric_tile("Dominant disease", pretty_name(report["dominant_disease"]) or "None detected")
+        metric_tile("Dominant disease", tr_disease(report["dominant_disease"], lang) if report["dominant_disease"] else "None detected")
     with c4:
         metric_tile("Diseased leaves", str(report["n_diseased"]))
 
@@ -348,7 +351,7 @@ def _render_report(report: dict) -> None:
     fig = go.Figure(go.Bar(
         orientation="h",
         x=[dc[n] for n in names],
-        y=[pretty_name(n) for n in names],
+        y=[tr_disease(n, lang) for n in names],
         text=[str(dc[n]) for n in names],
         textposition="outside",
         marker=dict(color=[CLASS_COLORS.get(n, "#7C8571") for n in names]),
@@ -416,7 +419,7 @@ def _render_report(report: dict) -> None:
                     f"""
                     <div style="border-left:4px solid {border};padding:.15rem .5rem;
                                 font-size:.78rem;color:#4E5646;margin:-.4rem 0 .8rem">
-                      <b>{pretty_name(leaf['disease'])}</b><br/>{leaf['confidence']*100:.0f}% confidence{low_conf_note}{uncertain_note}
+                      <b>{tr_disease(leaf['disease'], lang)}</b><br/>{leaf['confidence']*100:.0f}% confidence{low_conf_note}{uncertain_note}
                     </div>
                     """,
                     unsafe_allow_html=True,

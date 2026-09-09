@@ -175,25 +175,33 @@ def _is_healthy(disease: str, severity: str) -> bool:
 # ---------------------------------------------------------------------------
 # 1. Disease-based rules
 # ---------------------------------------------------------------------------
-def _disease_recommendations(crop: str, disease: str, severity: str) -> list[dict]:
+def _disease_recommendations(crop: str, disease: str, severity: str, lang: str = "en") -> list[dict]:
+    from src.i18n import tr_template, tr_disease, tr_rec_keyword, tr_rec_severity_action, tr_rec_keyword_label, tr_label
+
+    disease_label = tr_disease(disease, lang)
+    severity_label = tr_label(severity, lang) if lang == "ta" else severity
+
     if _is_healthy(disease, severity):
         return [_rec(
-            "No disease detected — keep up preventive practices such as crop "
-            "rotation and clean tools to avoid introducing pathogens.",
-            f"'{disease}' with severity 'None' — no disease signal present.",
+            tr_template("No disease detected — keep up preventive practices such as crop "
+                        "rotation and clean tools to avoid introducing pathogens.", lang),
+            tr_template("'{disease}' with severity 'None' — no disease signal present.",
+                        lang, disease=disease_label),
             "disease", "low",
         )]
 
     recs = [
         _rec(
-            "Inspect affected leaves closely to confirm the extent of infection.",
-            f"'{disease}' detected at {severity} severity.",
+            tr_template("Inspect affected leaves closely to confirm the extent of infection.", lang),
+            tr_template("'{disease}' detected at {severity} severity.", lang,
+                        disease=disease_label, severity=severity_label),
             "disease", "high" if severity == "High" else "medium",
         ),
         _rec(
-            "Monitor disease progression over the next several days to check "
-            "whether treatment is working.",
-            f"'{disease}' detected at {severity} severity.",
+            tr_template("Monitor disease progression over the next several days to check "
+                        "whether treatment is working.", lang),
+            tr_template("'{disease}' detected at {severity} severity.", lang,
+                        disease=disease_label, severity=severity_label),
             "disease", "medium",
         ),
     ]
@@ -202,13 +210,19 @@ def _disease_recommendations(crop: str, disease: str, severity: str) -> list[dic
     for keyword, advice in DISEASE_KEYWORD_ADVICE.items():
         if keyword in disease_lower:
             recs.append(_rec(
-                advice, f"'{disease}' matches known pattern '{keyword}'.",
+                tr_rec_keyword(keyword, lang, fallback=advice),
+                tr_template("'{disease}' matches known pattern '{keyword}'.", lang,
+                            disease=disease_label, keyword=tr_rec_keyword_label(keyword, lang)),
                 "disease", "high" if severity == "High" else "medium",
             ))
             break  # one specific match is enough; avoid piling on near-duplicates
 
     for text, priority in SEVERITY_ACTIONS.get(severity, []):
-        recs.append(_rec(text, f"Severity is {severity}.", "disease", priority))
+        recs.append(_rec(
+            tr_rec_severity_action(text, lang),
+            tr_template("Severity is {severity}.", lang, severity=severity_label),
+            "disease", priority,
+        ))
 
     return recs
 
@@ -218,8 +232,11 @@ def _disease_recommendations(crop: str, disease: str, severity: str) -> list[dic
 # ---------------------------------------------------------------------------
 def _environmental_recommendations(
     crop: str, temperature: float, humidity: float,
-    soil_moisture: float, rainfall: float,
+    soil_moisture: float, rainfall: float, lang: str = "en",
 ) -> list[dict]:
+    from src.i18n import tr_template, tr_crop, tr_rec_env_advice
+
+    crop_label = tr_crop(crop, lang)
     readings = {"temperature": temperature, "humidity": humidity,
                 "soil_moisture": soil_moisture, "rainfall": rainfall}
     recs: list[dict] = []
@@ -232,21 +249,21 @@ def _environmental_recommendations(
         any_off_range = True
         text, reason_template = ENV_ADVICE[key][status]
         priority = "high" if status == "Extreme" else "medium"
-        reason = reason_template.format(value=value, bound=bound, crop=crop)
-        recs.append(_rec(text, reason, "environment", priority))
+        reason = tr_template(reason_template, lang, value=value, bound=bound, crop=crop_label)
+        recs.append(_rec(tr_rec_env_advice(key, status, lang, fallback=text), reason, "environment", priority))
 
     if any_off_range:
         recs.append(_rec(
-            "Monitor environmental conditions closely over the next few days "
-            "and re-check readings after adjustments.",
-            "One or more readings fall outside the ideal range for this crop.",
+            tr_template("Monitor environmental conditions closely over the next few days "
+                        "and re-check readings after adjustments.", lang),
+            tr_template("One or more readings fall outside the ideal range for this crop.", lang),
             "environment", "medium",
         ))
     else:
         recs.append(_rec(
-            f"All environmental conditions are within {crop}'s ideal range — "
-            "maintain current practices.",
-            "Temperature, humidity, soil moisture, and rainfall are all optimal.",
+            tr_template("All environmental conditions are within {crop}'s ideal range — maintain current practices.",
+                        lang, crop=crop_label),
+            tr_template("Temperature, humidity, soil moisture, and rainfall are all optimal.", lang),
             "environment", "low",
         ))
 
@@ -256,14 +273,19 @@ def _environmental_recommendations(
 # ---------------------------------------------------------------------------
 # 3. Health-score-based rule
 # ---------------------------------------------------------------------------
-def _health_score_recommendation(health_score: int) -> dict:
-    for lo, hi, text, reason_template in HEALTH_SCORE_ADVICE:
+def _health_score_recommendation(health_score: int, lang: str = "en") -> dict:
+    from src.i18n import tr_template, tr_rec_health_score
+
+    for band_index, (lo, hi, text, reason_template) in enumerate(HEALTH_SCORE_ADVICE):
         if lo <= health_score <= hi:
-            return _rec(text, reason_template.format(score=health_score),
-                       "overall", "high" if hi <= 39 else "low" if lo >= 80 else "medium")
+            return _rec(
+                tr_rec_health_score(band_index, lang, fallback=text),
+                tr_template(reason_template, lang, score=health_score),
+                "overall", "high" if hi <= 39 else "low" if lo >= 80 else "medium",
+            )
     return _rec(
-        "Re-check the health score input — it should be between 0 and 100.",
-        f"Health score {health_score} is outside the expected 0-100 range.",
+        tr_template("Re-check the health score input — it should be between 0 and 100.", lang),
+        tr_template("Health score {score} is outside the expected 0-100 range.", lang, score=health_score),
         "overall", "medium",
     )
 
@@ -287,18 +309,30 @@ def _sort(recs: list[dict]) -> list[dict]:
 
 
 def _build_summary(crop: str, is_healthy: bool, any_off_range: bool,
-                    health_score: int) -> str:
+                    health_score: int, lang: str = "en") -> str:
+    from src.i18n import tr_template, tr_crop
+
+    crop_label = tr_crop(crop, lang)
     if is_healthy and not any_off_range:
-        return (f"{crop} looks healthy with favorable conditions "
-                f"(health score {health_score}/100) — maintain current practices.")
+        return tr_template(
+            "{crop} looks healthy with favorable conditions (health score {score}/100) — maintain current practices.",
+            lang, crop=crop_label, score=health_score,
+        )
     if is_healthy and any_off_range:
-        return (f"{crop} shows no disease, but environmental conditions need "
-                f"attention (health score {health_score}/100).")
+        return tr_template(
+            "{crop} shows no disease, but environmental conditions need attention (health score {score}/100).",
+            lang, crop=crop_label, score=health_score,
+        )
     if not is_healthy and not any_off_range:
-        return (f"{crop} has a detected disease but environmental conditions are "
-                f"favorable (health score {health_score}/100) — focus on treatment.")
-    return (f"{crop} needs attention on both disease and environmental fronts "
-            f"(health score {health_score}/100).")
+        return tr_template(
+            "{crop} has a detected disease but environmental conditions are favorable "
+            "(health score {score}/100) — focus on treatment.",
+            lang, crop=crop_label, score=health_score,
+        )
+    return tr_template(
+        "{crop} needs attention on both disease and environmental fronts (health score {score}/100).",
+        lang, crop=crop_label, score=health_score,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -313,12 +347,17 @@ def generate_recommendations(
     soil_moisture: float,
     rainfall: float,
     health_score: int,
+    lang: str = "en",
 ) -> dict[str, Any]:
     """Generate explainable, rule-based agricultural recommendations.
 
     No ML model, no external API or LLM — every recommendation comes from
     a fixed lookup table matched against the inputs, with the matching
     condition returned as `reason` for full explainability.
+
+    Args:
+        lang: "en" or "ta" — see src/i18n.py. Translates every
+            recommendation and reason text produced by the rules below.
 
     Returns:
         {
@@ -332,10 +371,10 @@ def generate_recommendations(
                          f"{', '.join(ENV_CROP_RANGES)}")
 
     is_healthy = _is_healthy(disease, severity)
-    disease_recs = _disease_recommendations(crop, disease, severity)
+    disease_recs = _disease_recommendations(crop, disease, severity, lang=lang)
     env_recs = _environmental_recommendations(crop, temperature, humidity,
-                                              soil_moisture, rainfall)
-    health_rec = _health_score_recommendation(health_score)
+                                              soil_moisture, rainfall, lang=lang)
+    health_rec = _health_score_recommendation(health_score, lang=lang)
 
     any_off_range = any(
         _factor_status(crop, k, v)[0] != "Optimal"
@@ -349,7 +388,7 @@ def generate_recommendations(
     return {
         "recommendations": all_recs,
         "priority_actions": priority_actions,
-        "summary": _build_summary(crop, is_healthy, any_off_range, health_score),
+        "summary": _build_summary(crop, is_healthy, any_off_range, health_score, lang=lang),
     }
 
 

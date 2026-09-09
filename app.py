@@ -13,6 +13,7 @@ import streamlit as st
 from config import APP_CONFIG, get_trained_crops
 from src.db import get_analyses, get_disease_analyses, get_environment_analyses
 from src.errors import DatabaseError, logger
+from src.i18n import get_language, tr_label, tr_crop
 from src.outbreak_detection import load_outbreak_signals, get_active_alerts
 from utils.ui import (
     inject_custom_css,
@@ -64,17 +65,18 @@ def _render_alert_banner() -> None:
         """,
         unsafe_allow_html=True,
     )
-    if st.button("View Outbreak Alerts →", key="_home_view_alerts"):
+    if st.button(tr_label("View Outbreak Alerts →", get_language()), key="_home_view_alerts"):
         st.session_state["current_page"] = "alerts"
         st.rerun()
 
 
 def render_home() -> None:
     """Render the landing / home view."""
+    lang = get_language()
     page_header(
         APP_CONFIG["page_icon"],
         APP_CONFIG["title"],
-        APP_CONFIG["subtitle"],
+        tr_label(APP_CONFIG["subtitle"], lang),
     )
 
     trained_crops = get_trained_crops()
@@ -82,20 +84,18 @@ def render_home() -> None:
     _render_alert_banner()
 
     # Intro
-    callout(
+    callout(tr_label(
         "**Multi-crop health workflow** · pick a crop, upload a leaf image, "
         "review the trained disease prediction, enter environmental readings, "
-        "and calculate an explainable health score."
-    )
-    st.markdown(
-        """
-        Monitor crop health and detect plant diseases **early** using AI-driven
-        image analysis combined with environmental data — entirely in software,
-        with no sensors or cameras required.
-        """
-    )
+        "and calculate an explainable health score.", lang
+    ))
+    st.markdown(tr_label(
+        "Monitor crop health and detect plant diseases **early** using AI-driven "
+        "image analysis combined with environmental data — entirely in software, "
+        "with no sensors or cameras required.", lang
+    ))
 
-    st.markdown("### What you can do here")
+    st.markdown(f"### {tr_label('What you can do here', lang)}")
     feats = [
         ("disease", "Detect diseases", "Upload a leaf image for any supported crop; the trained model reports disease, confidence, and severity."),
         ("field_scan", "Scan a field", "Upload 10-20+ leaf photos from a field walk and get one aggregated field health report."),
@@ -113,23 +113,21 @@ def render_home() -> None:
                 f"""
                 <div class="card" style="text-align:center;height:100%">
                   <div>{icon_tag}</div>
-                  <h4 style="color:var(--ink);margin:.4rem 0">{title}</h4>
-                  <div style="font-size:.85rem;color:#4E5646">{desc}</div>
+                  <h4 style="color:var(--ink);margin:.4rem 0">{tr_label(title, lang)}</h4>
+                  <div style="font-size:.85rem;color:#4E5646">{tr_label(desc, lang)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-    st.markdown("### Where to start")
-    st.markdown(
-        """
-        Use the **sidebar on the left** to navigate between modules. A suggested
-        flow: **Disease Detection → Environmental Analysis → Crop Health
-        Analysis → Dashboard**.
-        """
-    )
+    st.markdown(f"### {tr_label('Where to start', lang)}")
+    st.markdown(tr_label(
+        "Use the **sidebar on the left** to navigate between modules. A suggested "
+        "flow: **Disease Detection → Environmental Analysis → Crop Health "
+        "Analysis → Dashboard**.", lang
+    ))
 
-    st.markdown("### Supported crops")
+    st.markdown(f"### {tr_label('Supported crops', lang)}")
     if trained_crops:
         cols = st.columns(len(trained_crops))
         for col, crop in zip(cols, trained_crops):
@@ -139,37 +137,37 @@ def render_home() -> None:
                     f"""
                     <div class="card" style="text-align:center;height:100%">
                       <div>{icon_tag}</div>
-                      <h4 style="color:var(--ink);margin:.4rem 0">{crop}</h4>
+                      <h4 style="color:var(--ink);margin:.4rem 0">{tr_crop(crop, lang)}</h4>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
     else:
-        callout(
+        callout(tr_label(
             "No trained disease models were found yet. Train one with "
-            "`src/model_training.py --crop <name>` to see it listed here."
-        )
+            "`src/model_training.py --crop <name>` to see it listed here.", lang
+        ))
 
-    st.markdown("### Your activity")
+    st.markdown(f"### {tr_label('Your activity', lang)}")
     try:
         n_health = len(get_analyses(limit=100000))
         n_disease = len(get_disease_analyses(limit=100000))
         n_env = len(get_environment_analyses(limit=100000))
         glances = st.columns(3)
         with glances[0]:
-            st.metric("Health analyses", n_health)
+            st.metric(tr_label("Health analyses", lang), n_health)
         with glances[1]:
-            st.metric("Disease detections", n_disease)
+            st.metric(tr_label("Disease detections", lang), n_disease)
         with glances[2]:
-            st.metric("Environmental readings", n_env)
+            st.metric(tr_label("Environmental readings", lang), n_env)
     except DatabaseError as e:
         st.error(str(e))
     except Exception:
         logger.exception("Unexpected error loading home page activity stats")
-        st.error(
+        st.error(tr_label(
             "Loading your activity stats failed unexpectedly. Please try again. "
-            "If the problem continues, contact the app maintainer."
-        )
+            "If the problem continues, contact the app maintainer.", lang
+        ))
 
     footer()
 

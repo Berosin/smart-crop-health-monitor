@@ -35,6 +35,7 @@ from src.db import insert_analysis
 from src.environment_model import predict_environmental_risk
 from src.errors import safe_action, logger
 from src.health_engine import analyze_crop_health
+from src.i18n import get_language, tr_label, tr_crop, tr_disease
 from src.recommendation_engine import generate_recommendations, CATEGORY_ICON, PRIORITY_COLOR
 from src.validation import (
     validate_crop,
@@ -73,19 +74,20 @@ def _disease_classes_for(crop: str) -> list[str]:
 
 
 def render() -> None:
+    lang = get_language()
     page_header(
         "health",
-        "Crop Health Analysis",
-        "Combine disease detection and environmental data into an overall health score.",
+        tr_label("Crop Health Analysis", lang),
+        tr_label("Combine disease detection and environmental data into an overall health score.", lang),
     )
 
     trained_crops = get_trained_crops()
 
     if not trained_crops:
         callout(
-            f"{icon_html('warning', size=18)}<b>No trained disease model found.</b> "
-            "Train one first from the Disease Detection page's instructions before "
-            "running a health analysis."
+            f"{icon_html('warning', size=18)}<b>{tr_label('No trained disease model found.', lang)}</b> "
+            + tr_label("Train one first from the Disease Detection page's instructions before "
+            "running a health analysis.", lang)
         )
         footer()
         return
@@ -94,43 +96,43 @@ def render() -> None:
 
     # ------------------------------------------------------------- inputs
     with col_in:
-        st.markdown("#### Inputs")
+        st.markdown(f"#### {tr_label('Inputs', lang)}")
 
-        with st.expander("Disease result", expanded=True):
-            crop = st.selectbox("Crop name", trained_crops, index=0)
+        with st.expander(tr_label("Disease result", lang), expanded=True):
+            crop = st.selectbox(tr_label("Crop name", lang), trained_crops, index=0, format_func=lambda c: tr_crop(c, lang))
             disease_classes = _disease_classes_for(crop)
             disease_labels = {
-                disease: disease.replace("_", " ")
+                disease: tr_disease(disease, lang)
                 for disease in disease_classes
             }
             disease = st.selectbox(
-                "Detected disease",
+                tr_label("Detected disease", lang),
                 disease_classes,
                 format_func=disease_labels.get,
                 index=min(1, len(disease_classes) - 1),
             )
             confidence = st.number_input(
-                "Disease confidence",
+                tr_label("Disease confidence", lang),
                 min_value=0.0,
                 max_value=1.0,
                 value=0.82,
                 step=0.01,
                 format="%.2f",
-                help="Use the plus and minus buttons to change confidence by 1%.",
+                help=tr_label("Use the plus and minus buttons to change confidence by 1%.", lang),
             )
             severity = st.select_slider(
-                "Disease severity", options=["None", "Moderate", "High"],
-                value="Moderate",
+                tr_label("Disease severity", lang), options=["None", "Moderate", "High"],
+                value="Moderate", format_func=lambda s: tr_label(s, lang),
             )
 
-        with st.expander("Environmental readings", expanded=True):
+        with st.expander(tr_label("Environmental readings", lang), expanded=True):
             env = get_dummy_env_readings()
             cols = st.columns(2)
             for col, key in zip(cols * 2, ENV_LABELS):
                 with col:
                     spec = ENV_RANGES[key]
                     env[key] = st.number_input(
-                        f"{spec['label']} ({spec['unit']})",
+                        f"{tr_label(spec['label'], lang)} ({spec['unit']})",
                         min_value=float(spec["min"]),
                         max_value=float(spec["max"]),
                         value=float(env[key]),
@@ -138,23 +140,23 @@ def render() -> None:
                         format="%.1f",
                     )
 
-        compute = st.button("Calculate crop health", type="primary",
+        compute = st.button(tr_label("Calculate crop health", lang), type="primary",
                             use_container_width=True)
 
     # ------------------------------------------------------------- results
     with col_out:
-        st.markdown("#### Analysis result")
+        st.markdown(f"#### {tr_label('Analysis result', lang)}")
 
         results = st.session_state.get("_health_results")
 
         if compute:
             try:
                 with st.spinner("Calculating crop health…"):
-                    results = _analyze(crop, disease, confidence, severity, env)
+                    results = _analyze(crop, disease, confidence, severity, env, lang=lang)
                 st.session_state["_health_results"] = results
             except FileNotFoundError:
                 callout(
-                    f"{icon_html('warning', size=18)}<b>Environmental risk model not found.</b> "
+                    f"{icon_html('warning', size=18)}<b>{tr_label('Environmental risk model not found.', lang)}</b> "
                     "Train it first with <code>python -m src.environment_model</code>."
                 )
                 results = None
@@ -163,16 +165,16 @@ def render() -> None:
                 results = None
             except Exception:
                 logger.exception("Unexpected error computing crop health")
-                st.error(
+                st.error(tr_label(
                     "Calculating crop health failed unexpectedly. Please try "
-                    "again. If the problem continues, contact the app maintainer."
-                )
+                    "again. If the problem continues, contact the app maintainer.", lang
+                ))
                 results = None
         elif results is None:
             card(
-                "Awaiting calculation",
-                "Click **Calculate crop health** to combine the disease result "
-                "and environmental readings into an overall score and status.",
+                tr_label("Awaiting calculation", lang),
+                tr_label("Click **Calculate crop health** to combine the disease result "
+                "and environmental readings into an overall score and status.", lang),
             )
 
         if results is not None:
@@ -184,7 +186,7 @@ def render() -> None:
 # ---------------------------------------------------------------------------
 # Computation — delegates to src.environment_model + src.health_engine
 # ---------------------------------------------------------------------------
-def _analyze(crop, disease, confidence, severity, env) -> dict:
+def _analyze(crop, disease, confidence, severity, env, lang: str = "en") -> dict:
     # Validate every input before touching any model — one combined,
     # specific error if anything is out of range or malformed.
     crop = validate_crop(crop)
@@ -199,7 +201,7 @@ def _analyze(crop, disease, confidence, severity, env) -> dict:
         "humidity": env["humidity"],
         "soil_moisture": env["soil_moisture"],
         "rainfall": env["rainfall"],
-    })
+    }, lang=lang)
 
     result = analyze_crop_health(
         disease_prediction=disease,
@@ -214,6 +216,7 @@ def _analyze(crop, disease, confidence, severity, env) -> dict:
         environmental_probability=env_pred["probability"],
         environmental_probabilities=env_pred["probabilities"],
         environmental_recommendation=env_pred["recommendation"],
+        lang=lang,
     )
 
     result["crop"] = crop
@@ -229,6 +232,7 @@ def _analyze(crop, disease, confidence, severity, env) -> dict:
         soil_moisture=env["soil_moisture"],
         rainfall=env["rainfall"],
         health_score=result["health_score"],
+        lang=lang,
     )
 
     # A fresh, unique token per *computed* analysis (not per rerun). This is
@@ -242,75 +246,76 @@ def _analyze(crop, disease, confidence, severity, env) -> dict:
 # Rendering
 # ---------------------------------------------------------------------------
 def _render(results: dict) -> None:
+    lang = get_language()
     r = results
 
     # --- Top: overall score card + status ------------------------------
     sc1, sc2 = st.columns([2, 3])
     with sc1:
-        health_score_card(r["health_score"], label="Overall health score")
+        health_score_card(r["health_score"], label=tr_label("Overall health score", lang))
     with sc2:
-        st.markdown("#### Overall crop status")
+        st.markdown(f"#### {tr_label('Overall crop status', lang)}")
         status_color = score_color(r["health_score"])
         st.markdown(
             f"""
             <div style="background:#F7F7F1;border:1px solid #E2E5D8;
                         border-radius:12px;padding:1rem 1.2rem;text-align:center">
               <div style="font-size:.8rem;color:#5B6353;text-transform:uppercase;
-                          letter-spacing:.05em">Status</div>
+                          letter-spacing:.05em">{tr_label('Status', lang)}</div>
               <div style="font-size:1.6rem;font-weight:700;color:{status_color};
-                          margin-top:.2rem">{r['health_status']}</div>
-              <div style="font-size:.85rem;color:#7C8571">Crop: {r['crop']}</div>
+                          margin-top:.2rem">{tr_label(r['health_status'], lang)}</div>
+              <div style="font-size:.85rem;color:#7C8571">{tr_label('Crop:', lang)} {tr_crop(r['crop'], lang)}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        st.caption(f"Environmental risk model: **{r['env_model_used']}**")
+        st.caption(f"{tr_label('Environmental risk model:', lang)} **{r['env_model_used']}**")
 
     # --- Disease + environmental risk indicators ------------------------
-    st.markdown("#### Risk breakdown")
+    st.markdown(f"#### {tr_label('Risk breakdown', lang)}")
     rb1, rb2 = st.columns(2)
     with rb1:
-        st.markdown("**Disease risk**")
+        st.markdown(f"**{tr_label('Disease risk', lang)}**")
         risk_indicator(r["disease_risk"]["level"], show_bar=True)
-        st.caption(f"Disease score: {r['disease_risk']['score']}/100")
+        st.caption(f"{tr_label('Disease score:', lang)} {r['disease_risk']['score']}/100")
     with rb2:
-        st.markdown("**Environmental risk**")
+        st.markdown(f"**{tr_label('Environmental risk', lang)}**")
         risk_indicator(r["environmental_risk"]["level"], show_bar=True)
-        st.caption(f"Env. score: {r['environmental_risk']['score']}/100")
+        st.caption(f"{tr_label('Env. score:', lang)} {r['environmental_risk']['score']}/100")
 
     st.markdown("---")
 
     # --- All metrics ---------------------------------------------------
-    st.markdown("#### Detailed metrics")
-    st.markdown("**Disease**")
+    st.markdown(f"#### {tr_label('Detailed metrics', lang)}")
+    st.markdown(f"**{tr_label('Disease', lang)}**")
     d1, d2, d3, d4 = st.columns(4)
     dr = r["disease_risk"]
     with d1:
-        metric_display("Crop name", r["crop"], accent="#2F6D46")
+        metric_display(tr_label("Crop name", lang), tr_crop(r["crop"], lang), accent="#2F6D46")
     with d2:
-        metric_display("Disease", dr["prediction"],
+        metric_display(tr_label("Disease", lang), tr_disease(dr["prediction"], lang),
                        accent="#7FA687" if dr["level"] == "Optimal" else "#CE8C82")
     with d3:
-        metric_display("Confidence", f"{dr['confidence']*100:.0f}%", "model output")
+        metric_display(tr_label("Confidence", lang), f"{dr['confidence']*100:.0f}%", tr_label("model output", lang))
     with d4:
-        metric_display("Severity", dr["severity"],
+        metric_display(tr_label("Severity", lang), tr_label(dr["severity"], lang),
                        accent="#B5564B" if dr["severity"] == "High" else
                              "#C97A3B" if dr["severity"] == "Moderate" else "#7FA687")
 
-    st.markdown("**Environment**")
+    st.markdown(f"**{tr_label('Environment', lang)}**")
     e1, e2, e3, e4 = st.columns(4)
     env_keys = ["temperature", "humidity", "soil_moisture", "rainfall"]
     for col, key in zip([e1, e2, e3, e4], env_keys):
         spec = ENV_LABELS[key]
         with col:
-            metric_display(spec["label"], f"{r['env'][key]} {spec['unit']}")
+            metric_display(tr_label(spec["label"], lang), f"{r['env'][key]} {spec['unit']}")
 
     # --- Explanation ------------------------------------------------
-    st.markdown("#### Why this score?")
+    st.markdown(f"#### {tr_label('Why this score?', lang)}")
     callout(r["explanation"])
 
     # --- Recommendations (rule-based engine) ----------------------------
-    st.markdown("#### Agricultural recommendation")
+    st.markdown(f"#### {tr_label('Agricultural recommendation', lang)}")
     _render_recommendations(r["rule_based"])
 
     # --- Save to database -------------------------------------------
@@ -351,16 +356,17 @@ def _render_save_section(r: dict) -> None:
     Recomputing (even with identical inputs) mints a new token, so
     intentionally logging the same reading again later is still allowed.
     """
+    lang = get_language()
     token = r["_analysis_token"]
     saved_token = st.session_state.get("_health_saved_token")
 
     if saved_token == token:
         saved_id = st.session_state.get("_health_saved_id")
-        st.success(f"Analysis saved to database (ID: {saved_id}).")
-        st.button("Saved ✓", use_container_width=True, disabled=True)
+        st.success(f"{tr_label('Analysis saved to database (ID:', lang)} {saved_id}).")
+        st.button(f"{tr_label('Saved', lang)} ✓", use_container_width=True, disabled=True)
         return
 
-    if st.button("Save Analysis", type="primary", use_container_width=True):
+    if st.button(tr_label("Save Analysis", lang), type="primary", use_container_width=True):
         with safe_action("Saving analysis"):
             with st.spinner("Saving analysis…"):
                 record = _build_db_record(r)
@@ -374,10 +380,11 @@ def _render_recommendations(rule_based: dict) -> None:
     """Render the rule-based recommendation engine's output: a summary,
     any priority actions, then the full explainable list (text + why).
     """
+    lang = get_language()
     callout(rule_based["summary"])
 
     if rule_based["priority_actions"]:
-        st.markdown("**Priority actions**")
+        st.markdown(f"**{tr_label('Priority actions', lang)}**")
         for text in rule_based["priority_actions"]:
             st.markdown(f"- {text}")
         st.markdown("")
@@ -386,12 +393,14 @@ def _render_recommendations(rule_based: dict) -> None:
     for rec in rule_based["recommendations"]:
         icon_tag = icon_html(CATEGORY_ICON.get(rec["category"], "leaf"), size=20, margin_right="0")
         badge_color = PRIORITY_COLOR.get(rec["priority"], "#7FA687")
+        category_label = tr_label(rec["category"], lang) if lang == "ta" else rec["category"].title()
+        priority_label = tr_label(rec["priority"].upper(), lang) if lang == "ta" else rec["priority"].upper()
         items += (
             "<div class='rec-item'>"
             f"<div class='rec-icon'>{icon_tag}</div>"
             "<div>"
-            f"<div class='rec-title'>{rec['category'].title()} · "
-            f"<span style='color:{badge_color}'>{rec['priority'].upper()}</span></div>"
+            f"<div class='rec-title'>{category_label} · "
+            f"<span style='color:{badge_color}'>{priority_label}</span></div>"
             f"<div class='rec-text'>{rec['text']}</div>"
             f"<div style='font-size:.78rem;color:#7C8571;margin-top:.15rem'>{rec['reason']}</div>"
             "</div></div>"

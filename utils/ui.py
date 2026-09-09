@@ -16,6 +16,7 @@ import re
 import streamlit as st
 
 from config import APP_CONFIG
+from src.i18n import get_language, tr_label
 from utils.icons import icon_html, icon_pil
 
 # Shared Plotly theming so every chart sits visually inside the same
@@ -448,9 +449,10 @@ def pretty_name(name: str | None) -> str:
 
 
 def footer() -> None:
+    lang = get_language()
     st.markdown(
-        f'<div class="footer">{APP_CONFIG["title"]} · Software-only demo · '
-        "No hardware required</div>",
+        f'<div class="footer">{APP_CONFIG["title"]} · {tr_label("Software-only demo", lang)} · '
+        f'{tr_label("No hardware required", lang)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -482,11 +484,15 @@ def health_score_card(score: int, grade: str | None = None,
                       label: str = "Overall health score",
                       show_bar: bool = True) -> None:
     """A reusable, themed health-score card with a 0-100 progress bar."""
+    lang = get_language()
     if grade is None:
         grade = score_grade(score)
     color = score_color(score)
-    status = ("Excellent" if score >= 80 else "Good" if score >= 60 else
-              "Poor" if score >= 40 else "Critical")
+    status_en = ("Excellent" if score >= 80 else "Good" if score >= 60 else
+                 "Poor" if score >= 40 else "Critical")
+    status = tr_label(status_en, lang)
+    grade_word = tr_label("Grade", lang)
+    label_translated = tr_label(label, lang)
     bar_html = (
         f"""
         <div class="score-bar-track">
@@ -500,10 +506,10 @@ def health_score_card(score: int, grade: str | None = None,
     st.markdown(
         f"""
         <div class="health-card">
-          <div class="score-label">{label}</div>
+          <div class="score-label">{label_translated}</div>
           <div class="score-value" style="color:{color}">{score}<span
               style="font-size:1.2rem;color:#8E9682">/100</span></div>
-          <div class="score-grade">Grade {grade} · {status}</div>
+          <div class="score-grade">{grade_word} {grade} · {status}</div>
           {bar_html}
         </div>
         """,
@@ -524,9 +530,10 @@ RISK_LEVELS: dict[str, tuple[str, str, float]] = {
 def risk_indicator(level: str, label: str | None = None,
                    show_bar: bool = False) -> None:
     """A reusable colored pill + optional bar representing a risk level."""
+    lang = get_language()
     lvl, color, weight = RISK_LEVELS.get(level, ("Unknown", "#93998A", 0.5))
     if label is None:
-        label = lvl
+        label = tr_label(lvl, lang)
     bar_html = ""
     if show_bar:
         bar_html = (
@@ -590,11 +597,12 @@ def render_sidebar() -> str:
     a small selected dot next to the label, which is easy to miss.
     """
     with st.sidebar:
+        lang = get_language()
         brand_icon = icon_html(APP_CONFIG["page_icon"], size=24, margin_right=".4em")
         st.markdown(
             f"""
             <div class="sidebar-brand">{brand_icon}{APP_CONFIG['title']}</div>
-            <div class="sidebar-sub">{APP_CONFIG['subtitle']}</div>
+            <div class="sidebar-sub">{tr_label(APP_CONFIG['subtitle'], lang)}</div>
             """,
             unsafe_allow_html=True,
         )
@@ -602,11 +610,11 @@ def render_sidebar() -> str:
 
         current = st.session_state.get("current_page", PAGES[0][1])
 
-        st.caption("Navigate")
+        st.caption(tr_label("Navigate", lang))
         for name, key, _icon in PAGES:
             is_active = key == current
             clicked = st.button(
-                name, key=f"_nav_{key}", use_container_width=True,
+                tr_label(name, lang), key=f"_nav_{key}", use_container_width=True,
                 type="primary" if is_active else "secondary",
             )
             if clicked and key != current:
@@ -615,7 +623,22 @@ def render_sidebar() -> str:
 
         st.session_state["current_page"] = current  # always defined, even on first load
         st.markdown("---")
-        st.caption("Agriculture-themed demo build")
+
+        from src.i18n import LANGUAGES, set_language
+        current_lang = lang
+        lang_label = st.selectbox(
+            "Language / மொழி",
+            options=list(LANGUAGES.keys()),
+            format_func=lambda code: LANGUAGES[code],
+            index=list(LANGUAGES.keys()).index(current_lang),
+            key="_language_select",
+        )
+        if lang_label != current_lang:
+            set_language(lang_label)
+            st.rerun()
+
+        st.markdown("---")
+        st.caption(tr_label("Agriculture-themed demo build", lang))
         return current
 
 

@@ -19,6 +19,7 @@ Two report types, one shared style:
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from io import BytesIO
 
@@ -28,12 +29,56 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     Image as RLImage, HRFlowable, KeepTogether,
 )
 
 from config import APP_CONFIG
+from src.i18n import tr_crop, tr_disease, tr_severity, tr_recommendation, tr_label
+
+# ---------------------------------------------------------------------------
+# Tamil font registration
+#
+# ReportLab's built-in fonts (Helvetica etc.) have zero Tamil glyphs — text
+# would render as empty boxes, not an error, so this is easy to miss until
+# someone actually opens a Tamil PDF. Noto Sans Tamil (SIL Open Font
+# License, bundled at assets/fonts/) is registered once at import time and
+# reused for every Tamil-language report. Registered as a full "family"
+# (normal/bold/italic all pointing at the same single-weight file) so
+# in-paragraph <b> tags don't raise a lookup error — the font just won't
+# visually bolden, which is a cosmetic tradeoff, not a rendering failure.
+# ---------------------------------------------------------------------------
+TAMIL_FONT_NAME = "NotoSansTamil"
+_TAMIL_FONT_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts", "NotoSansTamil-Regular.ttf",
+)
+_tamil_font_registered = False
+
+
+def _ensure_tamil_font() -> bool:
+    """Register the Tamil font if it hasn't been already. Returns whether
+    it's available — callers fall back to the default (English-only) font
+    if the asset is missing rather than crashing the whole report.
+    """
+    global _tamil_font_registered
+    if _tamil_font_registered:
+        return True
+    if not os.path.exists(_TAMIL_FONT_PATH):
+        return False
+    try:
+        pdfmetrics.registerFont(TTFont(TAMIL_FONT_NAME, _TAMIL_FONT_PATH))
+        pdfmetrics.registerFontFamily(
+            TAMIL_FONT_NAME, normal=TAMIL_FONT_NAME, bold=TAMIL_FONT_NAME,
+            italic=TAMIL_FONT_NAME, boldItalic=TAMIL_FONT_NAME,
+        )
+        _tamil_font_registered = True
+        return True
+    except Exception:
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Shared palette (loosely matches the app's "field journal" earthy theme —
@@ -57,36 +102,41 @@ PAGE_MARGIN = 18 * mm
 MAX_IMAGE_WIDTH_PX = 900  # downscale embedded images before writing to keep file size reasonable
 
 
-def _styles() -> dict:
+def _styles(lang: str = "en") -> dict:
     base = getSampleStyleSheet()
+    font_name = None
+    if lang == "ta" and _ensure_tamil_font():
+        font_name = TAMIL_FONT_NAME
+    font_kwargs = {"fontName": font_name} if font_name else {}
+
     return {
         "title": ParagraphStyle(
             "ReportTitle", parent=base["Title"], textColor=COLOR_INK,
-            fontSize=18, spaceAfter=2,
+            fontSize=18, spaceAfter=2, **font_kwargs,
         ),
         "subtitle": ParagraphStyle(
             "ReportSubtitle", parent=base["Normal"], textColor=COLOR_MUTED,
-            fontSize=9.5, spaceAfter=10,
+            fontSize=9.5, spaceAfter=10, **font_kwargs,
         ),
         "h2": ParagraphStyle(
             "ReportH2", parent=base["Heading2"], textColor=COLOR_LEAF,
-            fontSize=13, spaceBefore=14, spaceAfter=6,
+            fontSize=13, spaceBefore=14, spaceAfter=6, **font_kwargs,
         ),
         "body": ParagraphStyle(
             "ReportBody", parent=base["Normal"], textColor=COLOR_INK,
-            fontSize=10, leading=14,
+            fontSize=10, leading=15 if lang == "ta" else 14, **font_kwargs,
         ),
         "muted": ParagraphStyle(
             "ReportMuted", parent=base["Normal"], textColor=COLOR_MUTED,
-            fontSize=8.5, leading=12,
+            fontSize=8.5, leading=13 if lang == "ta" else 12, **font_kwargs,
         ),
         "disclaimer": ParagraphStyle(
             "ReportDisclaimer", parent=base["Normal"], textColor=COLOR_FAINT,
-            fontSize=7.5, leading=10, spaceBefore=14,
+            fontSize=7.5, leading=11 if lang == "ta" else 10, spaceBefore=14, **font_kwargs,
         ),
         "image_caption": ParagraphStyle(
             "ImageCaption", parent=base["Normal"], textColor=COLOR_MUTED,
-            fontSize=8, alignment=1, spaceBefore=3,
+            fontSize=8, alignment=1, spaceBefore=3, **font_kwargs,
         ),
     }
 
@@ -134,19 +184,21 @@ def _rl_image(buf: BytesIO, max_width_mm: float) -> RLImage:
 # ---------------------------------------------------------------------------
 # Shared building blocks
 # ---------------------------------------------------------------------------
-def _header(styles: dict, title: str, subtitle_bits: list[str]) -> list:
+def _header(styles: dict, title: str, subtitle_bits: list[str], lang: str = "en") -> list:
+    generated_label = tr_label("Generated", lang)
     generated = datetime.now().strftime("%d %b %Y, %H:%M")
     return [
         Paragraph(APP_CONFIG["title"], styles["subtitle"]),
         Paragraph(title, styles["title"]),
-        Paragraph(" · ".join(subtitle_bits + [f"Generated {generated}"]), styles["subtitle"]),
+        Paragraph(" · ".join(subtitle_bits + [f"{generated_label} {generated}"]), styles["subtitle"]),
         HRFlowable(width="100%", thickness=1.2, color=COLOR_LEAF, spaceAfter=10),
     ]
 
 
-def _kv_table(rows: list[tuple[str, str]], col_widths=(45 * mm, 0)) -> Table:
+def _kv_table(rows: list[tuple[str, str]], col_widths=(45 * mm, 0), lang: str = "en") -> Table:
     """A clean two-column label/value table (used for the result summary)."""
-    data = [[Paragraph(f"<b>{k}</b>", _styles()["body"]), Paragraph(v, _styles()["body"])] for k, v in rows]
+    body_style = _styles(lang)["body"]
+    data = [[Paragraph(f"<b>{k}</b>", body_style), Paragraph(v, body_style)] for k, v in rows]
     widths = [col_widths[0], None]
     t = Table(data, colWidths=widths, hAlign="LEFT")
     t.setStyle(TableStyle([
@@ -189,11 +241,11 @@ def _disclaimer(styles: dict) -> Paragraph:
     )
 
 
-def _yield_loss_block(styles: dict, est: dict) -> list:
+def _yield_loss_block(styles: dict, est: dict, lang: str = "en") -> list:
     if not est:
         return []
     flow = [
-        Paragraph("Estimated Yield Loss If Untreated", styles["h2"]),
+        Paragraph(tr_label("Estimated Yield Loss If Untreated", lang), styles["h2"]),
         Paragraph(
             f"<b>{est['loss_pct_low']:.0f}\u2013{est['loss_pct_high']:.0f}%</b> of expected yield "
             f"on a {est['field_size_ha']:.2f} ha field "
@@ -222,7 +274,7 @@ def _yield_loss_block(styles: dict, est: dict) -> list:
 # ---------------------------------------------------------------------------
 # Report 1 — single Disease Detection result
 # ---------------------------------------------------------------------------
-def generate_disease_report_pdf(pred: dict, yield_loss_estimate: dict | None = None) -> bytes:
+def generate_disease_report_pdf(pred: dict, yield_loss_estimate: dict | None = None, lang: str = "en") -> bytes:
     """Build a one-analysis diagnostic report PDF.
 
     Args:
@@ -233,11 +285,16 @@ def generate_disease_report_pdf(pred: dict, yield_loss_estimate: dict | None = N
         yield_loss_estimate: output of src.yield_loss.estimate_yield_loss(),
             or None to omit that section (e.g. the crop is Healthy, or the
             person never opened/used the calculator).
+        lang: "en" or "ta" — see src/i18n.py. Crop/disease/severity/
+            recommendation and the report's own section headers translate;
+            the yield-loss explanation and disclaimer stay English (see
+            src/i18n.py's module docstring for the scope reasoning). Falls
+            back to English silently if the Tamil font asset is missing.
 
     Returns:
         The PDF file's raw bytes, ready for st.download_button(data=...).
     """
-    styles = _styles()
+    styles = _styles(lang)
     buf = BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -245,10 +302,16 @@ def generate_disease_report_pdf(pred: dict, yield_loss_estimate: dict | None = N
         leftMargin=PAGE_MARGIN, rightMargin=PAGE_MARGIN,
     )
 
+    crop_label = tr_crop(pred.get("_crop", "Unknown crop"), lang)
+    disease_label = tr_disease(pred["disease"], lang)
+    severity_label = tr_severity(pred["severity"], lang)
+    healthy_label = tr_label("Healthy", lang)
+    status_label = tr_label("Disease detected", lang) if not pred["is_healthy"] else healthy_label
+
     story: list = []
     story += _header(
-        styles, "Crop Disease Diagnostic Report",
-        [pred.get("_crop", "Unknown crop")],
+        styles, tr_label("Crop Disease Diagnostic Report", lang),
+        [crop_label], lang=lang,
     )
 
     if pred.get("is_ood"):
@@ -258,32 +321,32 @@ def generate_disease_report_pdf(pred: dict, yield_loss_estimate: dict | None = N
     status_color = "#7FA687" if pred["is_healthy"] else "#B5564B"
     story.append(Paragraph(
         f"<font color='{status_color}'><b>"
-        f"{'Healthy' if pred['is_healthy'] else pred['disease'].replace('_', ' ')}</b></font>",
+        f"{healthy_label if pred['is_healthy'] else disease_label}</b></font>",
         ParagraphStyle("Verdict", parent=styles["title"], fontSize=16, spaceAfter=8),
     ))
     story.append(_kv_table([
-        ("Crop", pred.get("_crop", "\u2014")),
-        ("Prediction", pred["disease"].replace("_", " ")),
-        ("Confidence", f"{pred['confidence'] * 100:.1f}%"),
-        ("Severity", pred["severity"]),
-        ("Status", "Healthy" if pred["is_healthy"] else "Disease detected"),
-    ]))
+        (tr_label("Crop", lang), crop_label),
+        (tr_label("Prediction", lang), disease_label),
+        (tr_label("Confidence", lang), f"{pred['confidence'] * 100:.1f}%"),
+        (tr_label("Severity", lang), severity_label),
+        (tr_label("Status", lang), status_label),
+    ], lang=lang))
     story.append(Spacer(1, 10))
 
     # Image(s): original + Grad-CAM overlay side by side, if available
     image_row = []
     if pred.get("_image_bytes"):
         img_buf = _prep_image_bytes(pred["_image_bytes"])
-        image_row.append([_rl_image(img_buf, max_width_mm=75), Paragraph("Analyzed leaf image", styles["image_caption"])])
+        image_row.append([_rl_image(img_buf, max_width_mm=75), Paragraph(tr_label("Analyzed leaf image", lang), styles["image_caption"])])
 
     if pred.get("gradcam_heatmap") is not None and pred.get("gradcam_base_image") is not None:
         from src.gradcam import overlay_heatmap  # local import: keep reportlab-only callers free of the TF-adjacent gradcam module
         overlay = overlay_heatmap(pred["gradcam_heatmap"], pred["gradcam_base_image"], alpha=0.4)
         overlay_buf = _prep_image_array(overlay)
-        image_row.append([_rl_image(overlay_buf, max_width_mm=75), Paragraph("Grad-CAM: what drove this prediction", styles["image_caption"])])
+        image_row.append([_rl_image(overlay_buf, max_width_mm=75), Paragraph(tr_label("Grad-CAM: what drove this prediction", lang), styles["image_caption"])])
 
     if image_row:
-        story.append(Paragraph("Image", styles["h2"]))
+        story.append(Paragraph(tr_label("Image", lang), styles["h2"]))
         col_data = [[img, cap] for img, cap in image_row]
         row_table = Table([[c[0] for c in col_data]], hAlign="LEFT")
         caption_table = Table([[c[1] for c in col_data]], hAlign="LEFT")
@@ -292,11 +355,12 @@ def generate_disease_report_pdf(pred: dict, yield_loss_estimate: dict | None = N
         story.append(Spacer(1, 6))
 
     # Recommendation
-    story.append(Paragraph("Recommendation", styles["h2"]))
-    story.append(Paragraph(pred["recommendation"], styles["body"]))
+    story.append(Paragraph(tr_label("Recommendation", lang), styles["h2"]))
+    recommendation_text = tr_recommendation(pred["disease"], lang, fallback=pred["recommendation"])
+    story.append(Paragraph(recommendation_text, styles["body"]))
 
     # Yield loss (optional)
-    story += _yield_loss_block(styles, yield_loss_estimate)
+    story += _yield_loss_block(styles, yield_loss_estimate, lang=lang)
 
     story.append(_disclaimer(styles))
     doc.build(story)
@@ -322,7 +386,25 @@ def generate_field_scan_report_pdf(report: dict, yield_loss_estimate: dict | Non
     to 30 photos in one scan, a table stays a readable, shareable page or
     two; embedding 30 images would not.
     """
-    styles = _styles()
+def generate_field_scan_report_pdf(report: dict, yield_loss_estimate: dict | None = None, lang: str = "en") -> bytes:
+    """Build a field-level report PDF from a Field Scan result.
+
+    Args:
+        report: the same aggregate dict pages/field_scan.py already builds
+            and renders (crop, n_total, n_healthy, n_diseased, healthy_pct,
+            dominant_disease, disease_counts, severity_counts,
+            field_health_score, leaves).
+        yield_loss_estimate: output of src.yield_loss.estimate_yield_loss()
+            for the field's dominant disease, or None to omit that section.
+        lang: "en" or "ta" — see src/i18n.py / generate_disease_report_pdf's
+            docstring for the exact translation scope.
+
+    Per-leaf detail is summarized as a compact table (name, disease,
+    confidence, severity) rather than embedding every thumbnail — with up
+    to 30 photos in one scan, a table stays a readable, shareable page or
+    two; embedding 30 images would not.
+    """
+    styles = _styles(lang)
     buf = BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -330,10 +412,14 @@ def generate_field_scan_report_pdf(report: dict, yield_loss_estimate: dict | Non
         leftMargin=PAGE_MARGIN, rightMargin=PAGE_MARGIN,
     )
 
+    crop_label = tr_crop(report.get("crop", "Unknown crop"), lang)
+    dominant_disease_label = tr_disease(report["dominant_disease"], lang) if report.get("dominant_disease") else tr_label("None detected", lang)
+
     story: list = []
     story += _header(
-        styles, "Field Scan Report",
-        [report.get("crop", "Unknown crop"), f"{report.get('n_total', 0)} leaves scanned"],
+        styles, tr_label("Field Scan Report", lang),
+        [crop_label, f"{report.get('n_total', 0)} {tr_label('leaves scanned', lang)}"],
+        lang=lang,
     )
 
     if report.get("n_uncertain"):
@@ -344,64 +430,64 @@ def generate_field_scan_report_pdf(report: dict, yield_loss_estimate: dict | Non
         )
 
     story.append(_kv_table([
-        ("Crop", report.get("crop", "\u2014")),
-        ("Photos scanned", str(report.get("n_total", 0))),
-        ("Healthy", f"{report.get('healthy_pct', 0):.0f}% ({report.get('n_healthy', 0)}/{report.get('n_total', 0)})"),
-        ("Dominant disease", (report.get("dominant_disease") or "None detected").replace("_", " ")),
-        ("Field health score", f"{report.get('field_health_score', '\u2014')}/100"),
-    ]))
+        (tr_label("Crop", lang), crop_label),
+        (tr_label("Photos scanned", lang), str(report.get("n_total", 0))),
+        (tr_label("Healthy", lang), f"{report.get('healthy_pct', 0):.0f}% ({report.get('n_healthy', 0)}/{report.get('n_total', 0)})"),
+        (tr_label("Dominant disease", lang), dominant_disease_label),
+        (tr_label("Field health score", lang), f"{report.get('field_health_score', '\u2014')}/100"),
+    ], lang=lang))
     story.append(Spacer(1, 8))
 
     # Disease breakdown table
     disease_counts = report.get("disease_counts") or {}
     if disease_counts:
-        story.append(Paragraph("Disease Breakdown", styles["h2"]))
-        rows = [["Disease", "Leaves"]] + [
-            [name.replace("_", " "), str(count)]
+        story.append(Paragraph(tr_label("Disease Breakdown", lang), styles["h2"]))
+        rows = [[tr_label("Disease", lang), tr_label("Leaves", lang)]] + [
+            [tr_disease(name, lang), str(count)]
             for name, count in sorted(disease_counts.items(), key=lambda kv: -kv[1])
         ]
-        story.append(_styled_table(rows))
+        story.append(_styled_table(rows, lang=lang))
         story.append(Spacer(1, 8))
 
     # Severity breakdown table
     severity_counts = report.get("severity_counts") or {}
     if severity_counts:
-        story.append(Paragraph("Severity Breakdown", styles["h2"]))
+        story.append(Paragraph(tr_label("Severity Breakdown", lang), styles["h2"]))
         order = ["None", "Mild", "Moderate", "High"]
         present = [s for s in order if s in severity_counts] + [s for s in severity_counts if s not in order]
-        rows = [["Severity", "Leaves"]] + [[s, str(severity_counts[s])] for s in present]
-        story.append(_styled_table(rows))
+        rows = [[tr_label("Severity", lang), tr_label("Leaves", lang)]] + [[tr_severity(s, lang), str(severity_counts[s])] for s in present]
+        story.append(_styled_table(rows, lang=lang))
         story.append(Spacer(1, 8))
 
     # Per-leaf table
     leaves = report.get("leaves") or []
     if leaves:
-        story.append(Paragraph("Individual Leaves", styles["h2"]))
-        rows = [["#", "Photo", "Prediction", "Confidence", "Severity", "Note"]]
+        story.append(Paragraph(tr_label("Individual Leaves", lang), styles["h2"]))
+        rows = [["#", tr_label("Photo", lang), tr_label("Prediction", lang), tr_label("Confidence", lang), tr_label("Severity", lang), tr_label("Note", lang)]]
         for i, leaf in enumerate(leaves, start=1):
             is_uncertain = leaf.get("ood_signal", {}).get("is_likely_ood")
             rows.append([
                 str(i),
                 leaf.get("name", "\u2014"),
-                leaf.get("disease", "\u2014").replace("_", " "),
+                tr_disease(leaf.get("disease", ""), lang),
                 f"{leaf.get('confidence', 0) * 100:.0f}%",
-                leaf.get("severity", "\u2014"),
-                "Uncertain" if is_uncertain else "",
+                tr_severity(leaf.get("severity", ""), lang),
+                tr_label("Uncertain", lang) if is_uncertain else "",
             ])
-        story.append(_styled_table(rows, col_widths=(8 * mm, 40 * mm, 35 * mm, 28 * mm, 22 * mm, 22 * mm)))
+        story.append(_styled_table(rows, col_widths=(8 * mm, 40 * mm, 35 * mm, 28 * mm, 22 * mm, 22 * mm), lang=lang))
         story.append(Spacer(1, 8))
 
     # Yield loss (optional)
-    story += _yield_loss_block(styles, yield_loss_estimate)
+    story += _yield_loss_block(styles, yield_loss_estimate, lang=lang)
 
     story.append(_disclaimer(styles))
     doc.build(story)
     return buf.getvalue()
 
 
-def _styled_table(rows: list[list[str]], col_widths=None) -> Table:
+def _styled_table(rows: list[list[str]], col_widths=None, lang: str = "en") -> Table:
     """A bordered, header-shaded table matching the app's card styling."""
-    body_style = _styles()["body"]
+    body_style = _styles(lang)["body"]
     data = [[Paragraph(f"<b>{c}</b>", body_style) for c in rows[0]]]
     for row in rows[1:]:
         data.append([Paragraph(str(c), body_style) for c in row])
@@ -480,4 +566,19 @@ if __name__ == "__main__":
         f.write(pdf_bytes2)
     print("Wrote /tmp/test_field_report.pdf")
 
-    print("\nOK — both report types built successfully.")
+    print("\n--- Building the SAME disease report in Tamil ---")
+    assert _ensure_tamil_font(), "Tamil font asset should be present at assets/fonts/NotoSansTamil-Regular.ttf"
+    pdf_bytes_ta = generate_disease_report_pdf(pred, yield_loss_estimate=yl, lang="ta")
+    assert pdf_bytes_ta[:4] == b"%PDF"
+    with open("/tmp/test_disease_report_ta.pdf", "wb") as f:
+        f.write(pdf_bytes_ta)
+    print(f"Wrote /tmp/test_disease_report_ta.pdf ({len(pdf_bytes_ta)} bytes)")
+
+    print("\n--- Building the SAME field scan report in Tamil ---")
+    pdf_bytes2_ta = generate_field_scan_report_pdf(field_report, yield_loss_estimate=yl_field, lang="ta")
+    assert pdf_bytes2_ta[:4] == b"%PDF"
+    with open("/tmp/test_field_report_ta.pdf", "wb") as f:
+        f.write(pdf_bytes2_ta)
+    print(f"Wrote /tmp/test_field_report_ta.pdf ({len(pdf_bytes2_ta)} bytes)")
+
+    print("\nOK — both report types built successfully in English and Tamil.")

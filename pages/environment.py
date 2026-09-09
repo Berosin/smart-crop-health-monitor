@@ -24,6 +24,7 @@ from src.db import insert_environment_analysis
 from src.environment_model import predict_environmental_risk
 from src.errors import logger, safe_action, WeatherError
 from src.health_engine import compute_environmental_risk_score
+from src.i18n import get_language, tr_label, tr_crop, tr_env_tip, tr_env_all_optimal
 from src.validation import validate_crop, validate_environmental_reading, ValidationError
 from src.weather import get_current_weather, get_forecast, build_forecast_risk, resolve_api_key
 from utils.ui import (
@@ -80,28 +81,33 @@ def _render_input_tile(key: str, value: float) -> None:
 
 
 def render() -> None:
+    lang = get_language()
     page_header(
         "environment",
-        "Environmental Analysis",
-        "Log environmental conditions and assess crop risk with the trained model.",
+        tr_label("Environmental Analysis", lang),
+        tr_label("Log environmental conditions and assess crop risk with the trained model.", lang),
     )
 
     col_input, col_summary = st.columns([2, 3])
 
     # -------------------------------------------------------------- inputs
     with col_input:
-        st.markdown("#### Enter environmental readings")
-        crop = st.selectbox("Crop type", CROPS)
+        st.markdown(f"#### {tr_label('Enter environmental readings', lang)}")
+        crop = st.selectbox(tr_label("Crop type", lang), CROPS, format_func=lambda c: tr_crop(c, lang))
 
+        data_source_options = ["Manual Entry", "Live Weather"]
         data_source = st.radio(
-            "Data source",
-            ["Manual Entry", "Live Weather"],
+            tr_label("Data source", lang),
+            data_source_options,
+            format_func=lambda o: tr_label(o, lang),
             horizontal=True,
             key="_env_data_source",
-            help="Live Weather auto-fills temperature, humidity, and rainfall "
-                 "from OpenWeatherMap for a location you choose. Soil moisture "
-                 "always needs a manual reading — no weather API measures it. "
-                 "Manual Entry (the default) needs nothing beyond this page.",
+            help=tr_label(
+                "Live Weather auto-fills temperature, humidity, and rainfall "
+                "from OpenWeatherMap for a location you choose. Soil moisture "
+                "always needs a manual reading — no weather API measures it. "
+                "Manual Entry (the default) needs nothing beyond this page.", lang
+            ),
         )
 
         live_weather = None
@@ -132,7 +138,7 @@ def render() -> None:
             with col:
                 spec = ENV_RANGES[key]
                 help_text = (
-                    "Not available from weather data — enter your own reading."
+                    tr_label("Not available from weather data — enter your own reading.", lang)
                     if key == "soil_moisture" and live_weather else None
                 )
                 widget_kwargs = dict(
@@ -150,18 +156,19 @@ def render() -> None:
                 if key not in prefilled_keys:
                     widget_kwargs["value"] = float(dummy[key])
                 inputs[key] = st.number_input(
-                    f"{FACTOR_META[key]['label']} ({spec['unit']})", **widget_kwargs,
+                    f"{tr_label(FACTOR_META[key]['label'], lang)} ({spec['unit']})", **widget_kwargs,
                 )
 
-        analyze = st.button("Assess environment", type="primary",
+        analyze = st.button(tr_label("Assess environment", lang), type="primary",
                            use_container_width=True)
 
     # ----------------------------------------------------- input summary
     with col_summary:
-        st.markdown("#### Input summary")
+        st.markdown(f"#### {tr_label('Input summary', lang)}")
         st.caption(
-            "What will be sent to the risk model."
-            + (f" Live weather for {live_weather['location_name']}, fetched {live_weather['fetched_at']}."
+            tr_label("What will be sent to the risk model.", lang)
+            + (f" {tr_label('Live weather for', lang)} {live_weather['location_name']}, "
+               f"{tr_label('fetched', lang)} {live_weather['fetched_at']}."
                if live_weather else "")
         )
         s1, s2 = st.columns(2)
@@ -178,20 +185,20 @@ def render() -> None:
 
     # ------------------------------------------------------- assessment
     if not analyze and not st.session_state.get("_env_results"):
-        callout("Click **Assess environment** to run the trained risk model "
-                "and see per-factor statuses, an overall risk level, and a visualization.")
+        callout(tr_label("Click **Assess environment** to run the trained risk model "
+                "and see per-factor statuses, an overall risk level, and a visualization.", lang))
         footer()
         return
 
     if analyze:
         try:
             with st.spinner("Assessing environmental risk…"):
-                results = _assess(crop, inputs)
+                results = _assess(crop, inputs, lang=lang)
             st.session_state["_env_results"] = results
         except FileNotFoundError:
             callout(
-                f"{icon_html('warning', size=18)}<b>Environmental risk model not found.</b> "
-                "Train it first with <code>python -m src.environment_model</code>."
+                f"{icon_html('warning', size=18)}<b>{tr_label('Environmental risk model not found.', lang)}</b> "
+                f"{tr_label('Train it first with', lang)} <code>python -m src.environment_model</code>."
             )
             footer()
             return
@@ -201,10 +208,10 @@ def render() -> None:
             return
         except Exception:
             logger.exception("Unexpected error assessing environment")
-            st.error(
+            st.error(tr_label(
                 "Assessing environmental risk failed unexpectedly. Please try "
-                "again. If the problem continues, contact the app maintainer."
-            )
+                "again. If the problem continues, contact the app maintainer.", lang
+            ))
             footer()
             return
     else:
@@ -213,7 +220,7 @@ def render() -> None:
     _render_risk_banner(results)
     _render_factor_table(results)
 
-    st.markdown("#### Factor visualization")
+    st.markdown(f"#### {tr_label('Factor visualization', lang)}")
     _render_radar(results)
 
     st.markdown("---")
@@ -234,28 +241,29 @@ def _render_live_weather_panel() -> dict | None:
     API just leaves live_weather as None, and the number_input fields above
     simply keep their manual-entry placeholder values (see render()).
     """
+    lang = get_language()
     session_key = st.session_state.get("_owm_api_key")
     api_key = resolve_api_key(session_key)
 
     if api_key:
         location = st.text_input(
-            "Location", value=st.session_state.get("_owm_location", "Chennai, IN"),
+            tr_label("Location", lang), value=st.session_state.get("_owm_location", "Chennai, IN"),
             placeholder="e.g. Chennai, IN",
-            help="City name, optionally with a country code, e.g. 'Chennai, IN'.",
+            help=tr_label("City name, optionally with a country code, e.g. 'Chennai, IN'.", lang),
             key="_owm_location",
         )
     else:
         loc_col, key_col = st.columns(2)
         with loc_col:
             location = st.text_input(
-                "Location", value=st.session_state.get("_owm_location", "Chennai, IN"),
+                tr_label("Location", lang), value=st.session_state.get("_owm_location", "Chennai, IN"),
                 placeholder="e.g. Chennai, IN",
-                help="City name, optionally with a country code, e.g. 'Chennai, IN'.",
+                help=tr_label("City name, optionally with a country code, e.g. 'Chennai, IN'.", lang),
                 key="_owm_location",
             )
         with key_col:
             typed_key = st.text_input(
-                "OpenWeatherMap API key", type="password",
+                tr_label("OpenWeatherMap API key", lang), type="password",
                 key="_owm_api_key_input",
                 help="Free at openweathermap.org/api. Kept only for this session — "
                      "never written to disk by this app. Set OPENWEATHERMAP_API_KEY "
@@ -267,19 +275,21 @@ def _render_live_weather_panel() -> dict | None:
                 api_key = typed_key
 
     if not api_key:
+        no_reenter_label = tr_label("so you don't have to re-enter it.", lang)
         callout(
-            f"{icon_html('info', size=18)}No OpenWeatherMap API key configured yet. "
-            "Get a free one at <a href='https://openweathermap.org/api' target='_blank'>"
-            "openweathermap.org/api</a> and paste it above. "
-        
+            f"{icon_html('info', size=18)}{tr_label('No OpenWeatherMap API key configured yet. Get a free one at', lang)} "
+            "<a href='https://openweathermap.org/api' target='_blank'>"
+            f"openweathermap.org/api</a> {tr_label('and paste it above, or set', lang)} "
+            f"<code>OPENWEATHERMAP_API_KEY</code> {tr_label('as an environment variable / in', lang)} "
+            f"<code>.streamlit/secrets.toml</code> {no_reenter_label}"
         )
         return st.session_state.get("_env_live_weather")
 
-    fetch = st.button("Fetch current weather", use_container_width=True, key="_owm_fetch_btn")
+    fetch = st.button(tr_label("Fetch current weather", lang), use_container_width=True, key="_owm_fetch_btn")
     if fetch:
         try:
             with st.spinner(f"Fetching weather for {location}…"):
-                weather = get_current_weather(location, api_key)
+                weather = get_current_weather(location, api_key, lang=lang)
             st.session_state["_env_live_weather"] = weather
             # One-shot: render() pops this right before creating the
             # temperature/humidity/rainfall widgets, so this fetch
@@ -290,10 +300,10 @@ def _render_live_weather_panel() -> dict | None:
             st.error(str(e))
         except Exception:
             logger.exception("Unexpected error fetching live weather")
-            st.error(
+            st.error(tr_label(
                 "Fetching weather failed unexpectedly. Please try again, or "
-                "switch to Manual Entry above."
-            )
+                "switch to Manual Entry above.", lang
+            ))
 
     weather = st.session_state.get("_env_live_weather")
     if weather:
@@ -301,8 +311,8 @@ def _render_live_weather_panel() -> dict | None:
             f"""
             <div class="callout">
               {icon_html('weather', size=18)}<b>{weather['location_name']}</b> — {weather['description']},
-              {weather['temperature']:.0f}°C, {weather['humidity']:.0f}% humidity
-              <span style="color:#7C8571;font-size:.8rem"> (fetched {weather['fetched_at']})</span>
+              {weather['temperature']:.0f}°C, {weather['humidity']:.0f}% {tr_label('humidity', lang)}
+              <span style="color:#7C8571;font-size:.8rem"> ({tr_label('fetched', lang)} {weather['fetched_at']})</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -314,31 +324,33 @@ def _render_live_weather_panel() -> dict | None:
 # Forecast disease-risk outlook — same trained model, forecast data as input
 # ---------------------------------------------------------------------------
 def _render_forecast_section(crop: str, soil_moisture: float) -> None:
-    st.markdown("#### Short-term disease risk forecast")
+    lang = get_language()
+    st.markdown(f"#### {tr_label('Short-term disease risk forecast', lang)}")
     st.caption(
-        "Runs the same trained risk model against the next few days' forecast "
+        tr_label("Runs the same trained risk model against the next few days' forecast "
         "instead of a single reading. Soil moisture is held at your current "
-        f"value above ({soil_moisture:g}%) for every day — no weather API "
-        "forecasts soil moisture."
+        "value above", lang)
+        + f" ({soil_moisture:g}%) "
+        + tr_label("for every day — no weather API forecasts soil moisture.", lang)
     )
 
     api_key = resolve_api_key(st.session_state.get("_owm_api_key"))
     location = st.session_state.get("_owm_location", "")
     if not api_key or not location:
-        st.info("Fetch current weather above first (needs a location and API key).")
+        st.info(tr_label("Fetch current weather above first (needs a location and API key).", lang))
         return
 
-    if st.button("Load 5-day risk forecast", key="_owm_forecast_btn"):
+    if st.button(tr_label("Load 5-day risk forecast", lang), key="_owm_forecast_btn"):
         try:
             with st.spinner("Fetching forecast and running the risk model…"):
-                forecast_days = get_forecast(location, api_key, days=5)
-                forecast_risk = build_forecast_risk(crop, forecast_days, soil_moisture)
+                forecast_days = get_forecast(location, api_key, days=5, lang=lang)
+                forecast_risk = build_forecast_risk(crop, forecast_days, soil_moisture, lang=lang)
             st.session_state["_env_forecast_risk"] = forecast_risk
         except WeatherError as e:
             st.error(str(e))
         except Exception:
             logger.exception("Unexpected error building forecast risk")
-            st.error("Building the forecast failed unexpectedly. Please try again.")
+            st.error(tr_label("Building the forecast failed unexpectedly. Please try again.", lang))
 
     forecast_risk = st.session_state.get("_env_forecast_risk")
     if not forecast_risk:
@@ -354,8 +366,8 @@ def _render_forecast_section(crop: str, soil_moisture: float) -> None:
                   <div style="font-size:.8rem;color:#4E5646;font-weight:600">{day['day_label']}</div>
                   <div style="font-size:.78rem;color:#7C8571;margin:.15rem 0">{day['description']}</div>
                   <div style="font-size:1rem;color:var(--ink)">{day['temp_min']:.0f}–{day['temp_max']:.0f}°C</div>
-                  <div style="font-size:.78rem;color:#7C8571">{day['rainfall_total']:.0f}mm rain</div>
-                  <div style="margin-top:.5rem;font-weight:700;color:{color}">{day['risk_level']}</div>
+                  <div style="font-size:.78rem;color:#7C8571">{day['rainfall_total']:.0f}mm {tr_label('rain', lang)}</div>
+                  <div style="margin-top:.5rem;font-weight:700;color:{color}">{tr_label(day['risk_level'], lang)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -364,7 +376,7 @@ def _render_forecast_section(crop: str, soil_moisture: float) -> None:
     worst = max(forecast_risk, key=lambda d: RISK_LEVELS.get(d["risk_level"], ("", "", 0.5))[2])
     if RISK_LEVELS.get(worst["risk_level"], ("", "", 0))[2] >= RISK_LEVELS["High"][2]:
         callout(
-            f"{icon_html('warning', size=18)}<b>{worst['day_label']} looks highest-risk:</b> "
+            f"{icon_html('warning', size=18)}<b>{worst['day_label']} {tr_label('looks highest-risk:', lang)}</b> "
             f"{worst['explanation']}"
         )
 
@@ -380,6 +392,7 @@ def _factor_breakdown(crop: str, inputs: dict) -> list[dict]:
     """
     ranges = ENV_CROP_RANGES[crop]
     factors = []
+    lang = get_language()
 
     for key in ("temperature", "humidity", "soil_moisture", "rainfall"):
         value = inputs[key]
@@ -387,21 +400,23 @@ def _factor_breakdown(crop: str, inputs: dict) -> list[dict]:
         unit = ENV_RANGES[key]["unit"]
 
         if opt_min <= value <= opt_max:
-            status, color, note = "Optimal", "#7FA687", "Within ideal range"
+            status, color, note = "Optimal", "#7FA687", tr_label("Within ideal range", lang)
             norm = (value - low) / (high - low) if high != low else 0.5
         elif low <= value < opt_min:
-            status, color, note = "Low", "#ffb74d", f"Below ideal ({opt_min}–{opt_max}{unit})"
+            status, color = "Low", "#ffb74d"
+            note = f"{tr_label('Below ideal', lang)} ({opt_min}–{opt_max}{unit})"
             norm = (value - low) / (high - low) if high != low else 0.25
         elif opt_max < value <= high:
-            status, color, note = "High", "#B5564B", f"Above ideal ({opt_min}–{opt_max}{unit})"
+            status, color = "High", "#B5564B"
+            note = f"{tr_label('Above ideal', lang)} ({opt_min}–{opt_max}{unit})"
             norm = (value - low) / (high - low) if high != low else 0.75
         else:
-            status, color, note = "Extreme", "#7C3730", "Outside safe range"
+            status, color, note = "Extreme", "#7C3730", tr_label("Outside safe range", lang)
             norm = 0.0 if value < low else 1.0
 
         factors.append({
             "key": key,
-            "label": FACTOR_META[key]["label"],
+            "label": tr_label(FACTOR_META[key]["label"], lang),
             "icon": FACTOR_META[key]["icon"],
             "value": value,
             "unit": unit,
@@ -415,20 +430,20 @@ def _factor_breakdown(crop: str, inputs: dict) -> list[dict]:
     return factors
 
 
-def _assess(crop: str, inputs: dict) -> dict:
+def _assess(crop: str, inputs: dict, lang: str = "en") -> dict:
     """Run the trained model for overall risk, plus a per-factor breakdown."""
     crop = validate_crop(crop)
     inputs = validate_environmental_reading(**inputs)
 
     factors = _factor_breakdown(crop, inputs)
 
-    env_pred = predict_environmental_risk({"crop": crop, **inputs})
+    env_pred = predict_environmental_risk({"crop": crop, **inputs}, lang=lang)
     health_score, _ = compute_environmental_risk_score(
         env_pred["risk_level"], env_pred["probability"], env_pred["probabilities"],
     )
     risk_color = RISK_LEVELS.get(env_pred["risk_level"], RISK_LEVELS["Moderate"])[1]
 
-    advice = _advice(crop, factors)
+    advice = _advice(crop, factors, lang=lang)
 
     return {
         "crop": crop,
@@ -447,7 +462,7 @@ def _assess(crop: str, inputs: dict) -> dict:
     }
 
 
-def _advice(crop: str, factors: list[dict]) -> list[str]:
+def _advice(crop: str, factors: list[dict], lang: str = "en") -> list[str]:
     """Plain-language recommendations based on out-of-range factors."""
     tips = {
         "temperature": {
@@ -482,13 +497,19 @@ def _advice(crop: str, factors: list[dict]) -> list[str]:
                         "and check for standing water."),
         },
     }
+    # f["status"] stays in English internally (set by _factor_breakdown) —
+    # only translated at render time in _render_factor_table — so it can
+    # be used directly as a lookup key here.
     out = []
     for f in factors:
-        if f["status"] in tips.get(f["key"], {}):
-            out.append(tips[f["key"]][f["status"]].format(crop=crop.lower()))
+        status_en = f["status"]
+        if status_en in tips.get(f["key"], {}):
+            english_tip = tips[f["key"]][status_en].format(crop=crop.lower())
+            out.append(tr_env_tip(f["key"], status_en, crop, lang, fallback=english_tip))
     if not out:
-        out.append(f"All environmental factors are within the ideal range for {crop}. "
-                   "Maintain current practices and keep monitoring.")
+        english_fallback = (f"All environmental factors are within the ideal range for {crop}. "
+                            "Maintain current practices and keep monitoring.")
+        out.append(tr_env_all_optimal(crop, lang, fallback=english_fallback))
     return out
 
 
@@ -496,6 +517,7 @@ def _advice(crop: str, factors: list[dict]) -> list[str]:
 # Rendering
 # ---------------------------------------------------------------------------
 def _render_risk_banner(results: dict) -> None:
+    lang = get_language()
     color = results["risk_color"]
     bg = "#F5E9E6" if results["risk_level"] in ("High", "Critical") else "#EAEFE2"
     st.markdown(
@@ -505,16 +527,16 @@ def _render_risk_banner(results: dict) -> None:
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div>
               <div style="font-size:.8rem;color:#4E5646;text-transform:uppercase;
-                          letter-spacing:.04em">Overall risk level</div>
+                          letter-spacing:.04em">{tr_label('Overall risk level', lang)}</div>
               <div style="font-size:1.6rem;font-weight:700;color:{color}">
-                {results['risk_level']}
+                {tr_label(results['risk_level'], lang)}
               </div>
               <div style="font-size:.78rem;color:#7C8571">
-                {results['probability']*100:.0f}% model confidence · {results['model_used']}
+                {results['probability']*100:.0f}% {tr_label('model confidence', lang)} · {results['model_used']}
               </div>
             </div>
             <div style="text-align:right">
-              <div style="font-size:.8rem;color:#4E5646">Env. health score</div>
+              <div style="font-size:.8rem;color:#4E5646">{tr_label('Env. health score', lang)}</div>
               <div style="font-size:1.6rem;font-weight:700;color:#1C2E20">
                 {results['health_score']}<span style="font-size:.9rem">/100</span>
               </div>
@@ -528,6 +550,7 @@ def _render_risk_banner(results: dict) -> None:
 
 
 def _render_factor_table(results: dict) -> None:
+    lang = get_language()
     rows = ""
     for f in results["factors"]:
         rows += (
@@ -535,7 +558,7 @@ def _render_factor_table(results: dict) -> None:
             f"<td>{icon_html(f['icon'], size=16, margin_right='.3em')}{f['label']}</td>"
             f"<td><b>{f['value']} {f['unit']}</b></td>"
             f"<td>{f['ideal'][0]}–{f['ideal'][1]} {f['unit']}</td>"
-            f"<td><span style='color:{f['color']};font-weight:700'>{f['status']}</span></td>"
+            f"<td><span style='color:{f['color']};font-weight:700'>{tr_label(f['status'], lang)}</span></td>"
             f"<td style='color:#6B7462'>{f['note']}</td>"
             f"</tr>"
         )
@@ -543,14 +566,14 @@ def _render_factor_table(results: dict) -> None:
         "<div class='card'><table style='width:100%;border-collapse:collapse;"
         "font-size:.88rem'>"
         "<tr style='color:#7C8571;border-bottom:1px solid #E6E8DC'>"
-        "<th align='left'>Factor</th><th align='left'>Value</th>"
-        "<th align='left'>Ideal range</th><th align='left'>Status</th>"
-        "<th align='left'>Note</th></tr>" + rows + "</table></div>",
+        f"<th align='left'>{tr_label('Factor', lang)}</th><th align='left'>{tr_label('Value', lang)}</th>"
+        f"<th align='left'>{tr_label('Ideal range', lang)}</th><th align='left'>{tr_label('Status', lang)}</th>"
+        f"<th align='left'>{tr_label('Note', lang)}</th></tr>" + rows + "</table></div>",
         unsafe_allow_html=True,
     )
 
     # Recommendations
-    st.markdown("#### Recommendations")
+    st.markdown(f"#### {tr_label('Recommendations', lang)}")
     for tip in results["advice"]:
         st.markdown(f"• {tip}")
 
@@ -581,16 +604,17 @@ def _render_save_section(results: dict) -> None:
     afterward so a stray rerun or repeat click can't insert the same
     reading twice.
     """
+    lang = get_language()
     token = results["_analysis_token"]
     saved_token = st.session_state.get("_env_saved_token")
 
     if saved_token == token:
         saved_id = st.session_state.get("_env_saved_id")
-        st.success(f"Analysis saved to database (ID: {saved_id}).")
-        st.button("Saved ✓", use_container_width=True, disabled=True, key="_env_saved_btn")
+        st.success(f"{tr_label('Analysis saved to database (ID:', lang)} {saved_id}).")
+        st.button(f"{tr_label('Saved', lang)} ✓", use_container_width=True, disabled=True, key="_env_saved_btn")
         return
 
-    if st.button("Save Analysis", type="primary", use_container_width=True, key="_env_save_btn"):
+    if st.button(tr_label("Save Analysis", lang), type="primary", use_container_width=True, key="_env_save_btn"):
         with safe_action("Saving analysis"):
             with st.spinner("Saving analysis…"):
                 record = _build_env_db_record(results)
@@ -602,6 +626,7 @@ def _render_save_section(results: dict) -> None:
 
 def _render_radar(results: dict) -> None:
     """Radar chart of the four factors (0..1 normalized to each crop's band)."""
+    lang = get_language()
     labels = [f["label"] for f in results["factors"]]
     values = [f["norm"] for f in results["factors"]]
     colors = [f["color"] for f in results["factors"]]
@@ -625,7 +650,7 @@ def _render_radar(results: dict) -> None:
         theta=labels + [labels[0]],
         fill="tonext", fillcolor="rgba(102,187,106,0.15)",
         line=dict(color="rgba(0,0,0,0)"),
-        name="Ideal band", showlegend=True,
+        name=tr_label("Ideal band", lang), showlegend=True,
     ))
     # Ideal band (lower edge, base)
     fig.add_trace(go.Scatterpolar(
@@ -642,7 +667,7 @@ def _render_radar(results: dict) -> None:
         fillcolor="rgba(46,125,50,0.18)",
         line=dict(color="#2F6D46", width=2),
         marker=dict(color=colors, size=8),
-        name="Current", showlegend=True,
+        name=tr_label("Current", lang), showlegend=True,
     ))
 
     fig.update_layout(
@@ -656,7 +681,9 @@ def _render_radar(results: dict) -> None:
         margin=dict(t=40, b=20),
     )
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(
+    crop_label = tr_crop(crop, lang)
+    caption_template = tr_label(
         "Readings are normalized 0–1 against each factor's safe band "
-        f"for **{crop}**. The shaded green zone is the ideal range."
+        "for **{crop}**. The shaded green zone is the ideal range.", lang
     )
+    st.caption(caption_template.format(crop=crop_label))

@@ -22,6 +22,7 @@ from src.errors import PredictionError, GradCAMError, logger, safe_action
 from src.gradcam import generate_gradcam, overlay_heatmap
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 from src.ood_detection import compute_ood_signal
+from src.i18n import get_language, tr_crop, tr_disease, tr_severity, tr_severity_action, tr_recommendation, tr_label
 from src.ood_feature_detector import load_stats as load_embedding_stats, compute_feature_ood_signal
 from src.yield_loss import get_yield_loss_range, estimate_yield_loss, REFERENCE_YIELD_T_PER_HA, HECTARES_PER_ACRE
 from utils.ui import (
@@ -431,12 +432,14 @@ def _render_ood_warning(ood_reasons: list[str]) -> None:
 def _render_result(pred: dict) -> None:
     """Render the full prediction result block."""
     is_ood = bool(pred.get("is_ood"))
+    lang = get_language()
 
     if is_ood:
         _render_ood_warning(pred.get("ood_reasons") or [])
 
     # Banner
-    sev_color, sev_action = SEVERITY_META.get(pred["severity"], ("#93998A", "Unknown"))
+    sev_color, sev_action_en = SEVERITY_META.get(pred["severity"], ("#93998A", "Unknown"))
+    sev_action = tr_severity_action(sev_action_en, lang)
     banner_bg = "#EAEFE2" if pred["is_healthy"] else "#F4EAD9"
     banner_border = "#7FA687" if pred["is_healthy"] else sev_color
     if is_ood:
@@ -445,14 +448,16 @@ def _render_result(pred: dict) -> None:
         # verdict at face value" without hiding what the model actually
         # said.
         banner_bg, banner_border = "#EDEDE8", "#93998A"
+    condition_label = tr_label("Detected condition (uncertain)" if is_ood else "Detected condition", lang)
+    disease_label = tr_disease(pred["disease"], lang)
     st.markdown(
         f"""
         <div style="background:{banner_bg};border-left:5px solid {banner_border};
                     border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem">
           <div style="font-size:.8rem;color:#4E5646;text-transform:uppercase;
-                      letter-spacing:.04em">Detected condition{' (uncertain)' if is_ood else ''}</div>
+                      letter-spacing:.04em">{condition_label}</div>
           <div style="font-size:1.5rem;font-weight:700;color:{'#7C8571' if is_ood else pred.get('color', CLASS_COLORS.get(pred['disease'], '#23291F'))}">
-            {pred['disease']}
+            {disease_label}
           </div>
           <div style="font-size:.85rem;color:#5B6353">{sev_action}</div>
         </div>
@@ -463,11 +468,11 @@ def _render_result(pred: dict) -> None:
     # KPI tiles
     c1, c2, c3 = st.columns(3)
     with c1:
-        metric_tile("Confidence", f"{pred['confidence']*100:.0f}%", "model output")
+        metric_tile(tr_label("Confidence", lang), f"{pred['confidence']*100:.0f}%", tr_label("model output", lang))
     with c2:
-        metric_tile("Severity", pred["severity"], sev_action)
+        metric_tile(tr_label("Severity", lang), tr_severity(pred["severity"], lang), sev_action)
     with c3:
-        metric_tile("Threshold", f"{pred['threshold']*100:.0f}%", "cutoff for reliable result")
+        metric_tile(tr_label("Threshold", lang), f"{pred['threshold']*100:.0f}%", tr_label("cutoff for reliable result", lang))
 
     # Low-confidence warning
     if pred["low_confidence"] and not pred["is_healthy"]:
@@ -478,12 +483,12 @@ def _render_result(pred: dict) -> None:
         )
 
     # Confidence breakdown bar chart
-    st.markdown("#### Confidence breakdown by class")
+    st.markdown(f"#### {tr_label('Confidence breakdown by class', lang)}")
     bd = pred["breakdown"]
     fig = go.Figure(go.Bar(
         orientation="h",
         x=[b["prob"] * 100 for b in bd],
-        y=[b["name"] for b in bd],
+        y=[tr_disease(b["name"], lang) for b in bd],
         text=[f"{b['prob']*100:.0f}%" for b in bd],
         textposition="outside",
         marker=dict(color=[b["color"] for b in bd]),
@@ -508,12 +513,13 @@ def _render_result(pred: dict) -> None:
     _render_gradcam(pred)
 
     # Recommendation
-    st.markdown("#### Recommendation")
+    st.markdown(f"#### {tr_label('Recommendation', lang)}")
     rec_icon = icon_html("healthy" if pred["is_healthy"] else "diseased", size=20)
+    recommendation_text = tr_recommendation(pred["disease"], lang, fallback=pred["recommendation"])
     st.markdown(
         f"""
         <div class="card">
-          {rec_icon} {pred['recommendation']}
+          {rec_icon} {recommendation_text}
         </div>
         """,
         unsafe_allow_html=True,

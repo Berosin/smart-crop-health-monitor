@@ -75,7 +75,7 @@ def resolve_api_key(session_key: str | None = None) -> str | None:
 # ---------------------------------------------------------------------------
 # Current conditions
 # ---------------------------------------------------------------------------
-def get_current_weather(location: str, api_key: str) -> dict:
+def get_current_weather(location: str, api_key: str, lang: str = "en") -> dict:
     """Current conditions for a location (e.g. "Chennai, IN").
 
     Returns a dict matching the environmental-reading shape the trained
@@ -92,7 +92,8 @@ def get_current_weather(location: str, api_key: str) -> dict:
     if not location or not location.strip():
         raise WeatherError("Enter a location first (e.g. 'Chennai, IN').")
 
-    data = _get(f"{OWM_BASE_URL}/weather", {"q": location.strip(), "appid": api_key, "units": "metric"}, location)
+    owm_lang = "ta" if lang == "ta" else "en"
+    data = _get(f"{OWM_BASE_URL}/weather", {"q": location.strip(), "appid": api_key, "units": "metric", "lang": owm_lang}, location)
 
     rainfall_mm = float((data.get("rain") or {}).get("1h", 0.0))
     weather0 = (data.get("weather") or [{}])[0]
@@ -113,7 +114,7 @@ def get_current_weather(location: str, api_key: str) -> dict:
 # ---------------------------------------------------------------------------
 # Forecast (daily-aggregated from the free 3-hour/5-day endpoint)
 # ---------------------------------------------------------------------------
-def get_forecast(location: str, api_key: str, days: int = 5) -> list[dict]:
+def get_forecast(location: str, api_key: str, days: int = 5, lang: str = "en") -> list[dict]:
     """Daily-aggregated forecast for the next `days` days.
 
     OpenWeatherMap's free tier only offers 3-hour-interval data (no native
@@ -136,7 +137,8 @@ def get_forecast(location: str, api_key: str, days: int = 5) -> list[dict]:
     if not location or not location.strip():
         raise WeatherError("Enter a location first (e.g. 'Chennai, IN').")
 
-    data = _get(f"{OWM_BASE_URL}/forecast", {"q": location.strip(), "appid": api_key, "units": "metric"}, location)
+    owm_lang = "ta" if lang == "ta" else "en"
+    data = _get(f"{OWM_BASE_URL}/forecast", {"q": location.strip(), "appid": api_key, "units": "metric", "lang": owm_lang}, location)
 
     slots_by_date: dict[str, list[dict]] = defaultdict(list)
     for slot in data.get("list", []):
@@ -197,7 +199,7 @@ def _get(url: str, params: dict, location: str) -> dict:
 # ---------------------------------------------------------------------------
 # Forecast disease-risk outlook — same trained model, forecast data as input
 # ---------------------------------------------------------------------------
-def build_forecast_risk(crop: str, forecast_days: list[dict], soil_moisture: float) -> list[dict]:
+def build_forecast_risk(crop: str, forecast_days: list[dict], soil_moisture: float, lang: str = "en") -> list[dict]:
     """Run the trained environmental risk model against each forecast day.
 
     Args:
@@ -223,7 +225,7 @@ def build_forecast_risk(crop: str, forecast_days: list[dict], soil_moisture: flo
                 "humidity": day["humidity_avg"],
                 "soil_moisture": soil_moisture,
                 "rainfall": day["rainfall_total"],
-            })
+            }, lang=lang)
         except Exception:
             logger.exception("Forecast risk prediction failed for %s on %s", crop, day.get("date"))
             continue
