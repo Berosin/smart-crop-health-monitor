@@ -105,20 +105,28 @@ def render_home() -> None:
         ("dashboard", "Visualize trends", "See stats and charts across all your past analyses."),
         ("history", "Keep history", "Save completed analyses and review them later."),
     ]
-    cols = st.columns(len(feats))
-    for col, (icon, title, desc) in zip(cols, feats):
-        with col:
-            icon_tag = icon_html(icon, size=32, margin_right="0")
-            st.markdown(
-                f"""
-                <div class="card" style="text-align:center;height:100%">
-                  <div>{icon_tag}</div>
-                  <h4 style="color:var(--ink);margin:.4rem 0">{tr_label(title, lang)}</h4>
-                  <div style="font-size:.85rem;color:#4E5646">{tr_label(desc, lang)}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    # A CSS grid (see .feature-grid in utils/ui.py) rather than
+    # st.columns(len(feats)) — st.columns forces all 7 cards onto one row
+    # no matter the viewport, squeezing each one so narrow that titles like
+    # "outbreaks" or "conditions" get force-broken mid-word. The grid lets
+    # the browser wrap cards onto additional rows instead.
+    #
+    # NOTE: every line below is flush-left with zero leading whitespace.
+    # Streamlit's markdown renderer treats 4+ leading spaces as a code
+    # block, so indenting this HTML (as a "readable" triple-quoted string
+    # normally would) makes every card after the first render as raw
+    # visible text instead of parsed HTML — that's the bug being fixed here.
+    card_parts = []
+    for icon, title, desc in feats:
+        card_parts.append(
+            '<div class="card">'
+            f'<div>{icon_html(icon, size=32, margin_right="0")}</div>'
+            f'<h4 style="color:var(--ink)">{tr_label(title, lang)}</h4>'
+            f'<div style="font-size:.85rem;color:#4E5646">{tr_label(desc, lang)}</div>'
+            '</div>'
+        )
+    cards_html = "".join(card_parts)
+    st.markdown(f'<div class="feature-grid">{cards_html}</div>', unsafe_allow_html=True)
 
     st.markdown(f"### {tr_label('Where to start', lang)}")
     st.markdown(tr_label(

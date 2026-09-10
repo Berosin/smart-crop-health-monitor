@@ -99,6 +99,9 @@ def inject_custom_css() -> None:
             color: var(--ink);
             font-weight: 600;
             letter-spacing: -.01em;
+            overflow-wrap: normal;
+            word-break: normal;
+            hyphens: auto;
         }
         h4 { font-size: 1.05rem; margin-top: 1.6rem; }
 
@@ -176,7 +179,27 @@ def inject_custom_css() -> None:
             padding: 1.1rem 1.25rem;
             box-shadow: var(--shadow-sm);
             margin-bottom: 1rem;
+            overflow-wrap: normal;
+            word-break: normal;
         }
+
+        /* ---------------------------------------------------------------
+           Responsive feature grid — used for "What you can do here" style
+           card rows. A CSS grid (rather than st.columns, which forces N
+           equal-width columns on one row no matter how narrow that makes
+           each card) lets the browser decide how many cards fit per row
+           and reflow the rest, so a card is never squeezed narrower than
+           minmax()'s floor — the actual fix for titles like "outbreaks"
+           or "conditions" being forced to break mid-word.
+        --------------------------------------------------------------- */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .feature-grid .card { margin-bottom: 0; text-align: center; height: 100%; }
+        .feature-grid .card h4 { margin: .4rem 0; }
 
         /* ---------------------------------------------------------------
            Sidebar
