@@ -166,12 +166,16 @@ def _window_stats(records: list[dict]) -> dict:
 # Step 3 — classify recent vs. prior window into a risk level
 # ---------------------------------------------------------------------------
 def _classify_risk(recent: dict, diseased_delta: float | None, high_delta: float | None,
-                    insufficient_data: bool, has_prior: bool) -> tuple[str, str]:
+                    insufficient_data: bool, has_prior: bool, lang: str = "en") -> tuple[str, str]:
+    from src.i18n import tr_template, tr_label
+
     if insufficient_data:
-        return "Insufficient data", (
-            f"Only {recent['n_records']} saved analysis(es) so far for this crop — "
-            "a few more are needed before a trend can be judged."
+        reason = tr_template(
+            "Only {n} saved analysis(es) so far for this crop — "
+            "a few more are needed before a trend can be judged.",
+            lang, n=recent["n_records"],
         )
+        return "Insufficient data", reason
 
     diseased_pct = recent["diseased_pct"]
 
@@ -179,30 +183,57 @@ def _classify_risk(recent: dict, diseased_delta: float | None, high_delta: float
         # Enough records to describe right now, but nothing before this
         # window to compare against yet — report current state, not a trend.
         if diseased_pct >= 60:
-            return "Watch", (
-                f"{diseased_pct:.0f}% of recent analyses are diseased. "
-                "No prior window yet to compare against."
+            reason = tr_template(
+                "{pct:.0f}% of recent analyses are diseased. "
+                "No prior window yet to compare against.",
+                lang, pct=diseased_pct,
             )
-        return "Low", "No prior window yet to compare against; current detections look manageable."
+            return "Watch", reason
+        reason = tr_template(
+            "No prior window yet to compare against; current detections look manageable.", lang,
+        )
+        return "Low", reason
 
     if diseased_pct >= 80 or (diseased_pct >= 60 and high_delta is not None and high_delta > 10):
-        reason = f"{diseased_pct:.0f}% of recent analyses are diseased"
-        reason += f", and high-severity share is up {high_delta:+.0f} pts vs. the prior window." if high_delta else "."
+        if high_delta:
+            reason = tr_template(
+                "{pct:.0f}% of recent analyses are diseased, and high-severity share is up "
+                "{delta:+.0f} pts vs. the prior window.",
+                lang, pct=diseased_pct, delta=high_delta,
+            )
+        else:
+            reason = tr_template("{pct:.0f}% of recent analyses are diseased.", lang, pct=diseased_pct)
         return "High", reason
 
     if (diseased_delta is not None and diseased_delta > 15) or (high_delta is not None and high_delta > 10):
-        reason = f"Diseased share is up {diseased_delta:+.0f} pts vs. the prior window"
-        reason += f", high-severity share up {high_delta:+.0f} pts." if high_delta and high_delta > 10 else "."
+        if high_delta and high_delta > 10:
+            reason = tr_template(
+                "Diseased share is up {delta:+.0f} pts vs. the prior window, "
+                "high-severity share up {hdelta:+.0f} pts.",
+                lang, delta=diseased_delta, hdelta=high_delta,
+            )
+        else:
+            reason = tr_template(
+                "Diseased share is up {delta:+.0f} pts vs. the prior window.", lang, delta=diseased_delta,
+            )
         return "Elevated", reason
 
     if (diseased_delta is not None and diseased_delta > 5) or diseased_pct >= 40:
-        return "Watch", f"Diseased share is {diseased_pct:.0f}% and trending up {diseased_delta:+.0f} pts."
+        reason = tr_template(
+            "Diseased share is {pct:.0f}% and trending up {delta:+.0f} pts.",
+            lang, pct=diseased_pct, delta=diseased_delta,
+        )
+        return "Watch", reason
 
-    delta_txt = f"{diseased_delta:+.0f} pts" if diseased_delta is not None else "stable"
-    return "Low", f"Diseased share is {diseased_pct:.0f}%, stable or improving ({delta_txt})."
+    delta_txt = f"{diseased_delta:+.0f} pts" if diseased_delta is not None else tr_label("stable", lang)
+    reason = tr_template(
+        "Diseased share is {pct:.0f}%, stable or improving ({delta_txt}).",
+        lang, pct=diseased_pct, delta_txt=delta_txt,
+    )
+    return "Low", reason
 
 
-def compute_outbreak_signal(records: list[dict], crop: str, window: int = 7) -> dict:
+def compute_outbreak_signal(records: list[dict], crop: str, window: int = 7, lang: str = "en") -> dict:
     """The full recent-vs-prior comparison for one crop.
 
     `records` must already be chronologically sorted ascending (as returned
@@ -225,7 +256,9 @@ def compute_outbreak_signal(records: list[dict], crop: str, window: int = 7) -> 
     diseased_delta = round(recent["diseased_pct"] - prior["diseased_pct"], 1) if has_prior else None
     high_delta = round(recent["high_pct"] - prior["high_pct"], 1) if has_prior else None
 
-    risk_level, risk_reason = _classify_risk(recent, diseased_delta, high_delta, insufficient_data, has_prior)
+    risk_level, risk_reason = _classify_risk(
+        recent, diseased_delta, high_delta, insufficient_data, has_prior, lang=lang,
+    )
 
     return {
         "crop": crop,
@@ -244,10 +277,10 @@ def compute_outbreak_signal(records: list[dict], crop: str, window: int = 7) -> 
 # ---------------------------------------------------------------------------
 # Step 4 — all crops at once, ready for an alerts view
 # ---------------------------------------------------------------------------
-def compute_all_outbreak_signals(records: list[dict], window: int = 7) -> list[dict]:
+def compute_all_outbreak_signals(records: list[dict], window: int = 7, lang: str = "en") -> list[dict]:
     """One outbreak signal per crop present in `records`, most urgent first."""
     crops = sorted({r["crop"] for r in records if r["crop"]})
-    signals = [compute_outbreak_signal(records, crop, window) for crop in crops]
+    signals = [compute_outbreak_signal(records, crop, window, lang=lang) for crop in crops]
     signals.sort(key=lambda s: RISK_ORDER.get(s["risk_level"], 9))
     return signals
 
@@ -260,7 +293,7 @@ def get_active_alerts(signals: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Convenience: load straight from the database
 # ---------------------------------------------------------------------------
-def load_outbreak_signals(window: int = 7, limit: int = 500) -> list[dict]:
+def load_outbreak_signals(window: int = 7, limit: int = 500, lang: str = "en") -> list[dict]:
     """End-to-end: pull saved history from SQLite and compute every crop's signal.
 
     Kept separate from compute_all_outbreak_signals() so the pure
@@ -272,7 +305,7 @@ def load_outbreak_signals(window: int = 7, limit: int = 500) -> list[dict]:
     disease_rows = get_disease_analyses(limit=limit)
     field_scan_rows = get_field_scans(limit=limit)
     records = collect_detection_records(disease_rows, field_scan_rows)
-    return compute_all_outbreak_signals(records, window=window)
+    return compute_all_outbreak_signals(records, window=window, lang=lang)
 
 
 # ---------------------------------------------------------------------------

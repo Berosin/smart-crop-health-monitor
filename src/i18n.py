@@ -743,6 +743,307 @@ HOME_TA: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
+# About Project page (pages/about.py)
+# ---------------------------------------------------------------------------
+ABOUT_TA: dict[str, str] = {
+    "**Smart Crop Health Monitoring** is a software-only Streamlit "
+    "application for checking crop health. It combines trained "
+    "image classification, environmental risk analysis, an explainable "
+    "health score, and practical agricultural recommendations in one "
+    "workflow. No sensors or IoT hardware are required.":
+        "**ஸ்மார்ட் பயிர் ஆரோக்கிய கண்காணிப்பு** என்பது பயிர் ஆரோக்கியத்தை "
+        "சரிபார்க்கும் ஒரு மென்பொருள் மட்டும் கொண்ட Streamlit செயலி ஆகும். இது "
+        "பயிற்சி பெற்ற பட வகைப்பாடு, சுற்றுச்சூழல் ஆபத்து பகுப்பாய்வு, விளக்கமளிக்கக்கூடிய "
+        "ஆரோக்கிய மதிப்பெண் மற்றும் நடைமுறை விவசாய பரிந்துரைகளை ஒரே பணிப்பாய்வில் "
+        "இணைக்கிறது. எந்த சென்சார்களும் IoT வன்பொருளும் தேவையில்லை.",
+    "Current workflow": "தற்போதைய பணிப்பாய்வு",
+    "Pick a crop and upload a leaf image": "பயிரைத் தேர்ந்தெடுத்து இலைப் படத்தைப் பதிவேற்றவும்",
+    "Choose a trained crop and submit a clear JPG or PNG image for analysis.":
+        "பயிற்சி பெற்ற பயிரைத் தேர்ந்தெடுத்து, பகுப்பாய்வுக்காக தெளிவான JPG அல்லது PNG படத்தைச் சமர்ப்பிக்கவும்.",
+    "Classify the leaf": "இலையை வகைப்படுத்தவும்",
+    "That crop's trained model recognizes Healthy, Early Blight, or Late Blight.":
+        "அந்த பயிரின் பயிற்சி பெற்ற மாதிரி ஆரோக்கியமானது, ஆரம்பநிலை கருகல் அல்லது தாமதமான கருகல் ஆகியவற்றை அடையாளம் காணும்.",
+    "Review confidence": "நம்பகத்தன்மையை மதிப்பாய்வு செய்யவும்",
+    "The prediction includes class probabilities and confidence.":
+        "முன்னறிவிப்பில் வகை நிகழ்தகவுகளும் நம்பகத்தன்மையும் அடங்கும்.",
+    "Enter environmental readings": "சுற்றுச்சூழல் அளவீடுகளை உள்ளிடவும்",
+    "Provide temperature, humidity, soil moisture, and rainfall.":
+        "வெப்பநிலை, ஈரப்பதம், மண் ஈரப்பதம் மற்றும் மழைப்பொழிவை வழங்கவும்.",
+    "Assess environmental risk": "சுற்றுச்சூழல் ஆபத்தை மதிப்பிடவும்",
+    "The trained environmental model classifies the current conditions.":
+        "பயிற்சி பெற்ற சுற்றுச்சூழல் மாதிரி தற்போதைய நிலைமைகளை வகைப்படுத்துகிறது.",
+    "Calculate crop health": "பயிர் ஆரோக்கியத்தைக் கணக்கிடவும்",
+    "Disease and environmental signals become one explainable score out of 100.":
+        "நோய் மற்றும் சுற்றுச்சூழல் சமிக்ஞைகள் 100-க்கு ஒரு விளக்கமளிக்கக்கூடிய மதிப்பெண்ணாக மாறும்.",
+    "Review recommendations": "பரிந்துரைகளை மதிப்பாய்வு செய்யவும்",
+    "Severity-aware, crop-specific actions explain what to do next.":
+        "தீவிரத்தை உணர்ந்த, பயிருக்கு உரிய நடவடிக்கைகள் அடுத்து என்ன செய்ய வேண்டும் என்பதை விளக்குகின்றன.",
+    "Save and review analyses": "பகுப்பாய்வுகளை சேமித்து மதிப்பாய்வு செய்யவும்",
+    "Save completed assessments to SQLite and inspect them in History and Dashboard.":
+        "முடிக்கப்பட்ட மதிப்பீடுகளை SQLite-ல் சேமித்து வரலாறு மற்றும் கட்டுப்பாட்டு பலகையில் பரிசோதிக்கவும்.",
+    "Technology": "தொழில்நுட்பம்",
+    "Frontend / UI": "முன் பகுதி / UI",
+    "Programming": "நிரலாக்கம்",
+    "AI / Deep Learning": "AI / ஆழ்ந்த கற்றல்",
+    "Machine Learning": "இயந்திர கற்றல்",
+    "Image Processing": "பட செயலாக்கம்",
+    "Data Processing": "தரவு செயலாக்கம்",
+    "Database": "தரவுத்தளம்",
+    "Visualization": "காட்சிப்படுத்தல்",
+    "Current model scope": "தற்போதைய மாதிரி வரம்பு",
+    "No trained disease model found yet.": "இதுவரை பயிற்சி பெற்ற நோய் மாதிரி எதுவும் இல்லை.",
+    "Currently trained:": "தற்போது பயிற்சி பெற்றவை:",
+    "none": "எதுவுமில்லை",
+    "can be added by training a model for that crop — "
+    "see the Disease Detection page for the training command.":
+        "அந்த பயிருக்கான மாதிரியைப் பயிற்சி செய்வதன் மூலம் சேர்க்கலாம் — "
+        "பயிற்சிக் கட்டளைக்கு நோய் கண்டறிதல் பக்கத்தைப் பார்க்கவும்.",
+}
+
+# ---------------------------------------------------------------------------
+# Outbreak Alerts page (pages/alerts.py) + its dynamic risk_reason sentences
+# (src/outbreak_detection.py, translated via tr_template like health_engine.py)
+# ---------------------------------------------------------------------------
+ALERTS_TA: dict[str, str] = {
+    "Outbreak Alerts": "பரவல் எச்சரிக்கைகள்",
+    "Rolling-window trend detection over your saved Disease Detection and Field Scan history.":
+        "உங்கள் சேமிக்கப்பட்ட நோய் கண்டறிதல் மற்றும் வயல் ஆய்வு வரலாற்றின் மீதான உருள் சாளர போக்கு கண்டறிதல்.",
+    "Rolling window (saved analyses)": "உருள் சாளரம் (சேமிக்கப்பட்ட பகுப்பாய்வுகள்)",
+    "Each crop's most recent N saved analyses are compared against the N before them.":
+        "ஒவ்வொரு பயிரின் மிக சமீபத்திய N சேமிக்கப்பட்ட பகுப்பாய்வுகள் அதற்கு முந்தைய N உடன் ஒப்பிடப்படுகின்றன.",
+    "Analyzing saved history…": "சேமிக்கப்பட்ட வரலாறு பகுப்பாய்வு செய்யப்படுகிறது…",
+    "Couldn't analyze saved history right now. Please try again. "
+    "If the problem continues, contact the app maintainer.":
+        "இப்போது சேமிக்கப்பட்ட வரலாற்றை பகுப்பாய்வு செய்ய முடியவில்லை. மீண்டும் "
+        "முயற்சிக்கவும். சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+    "No history yet": "இதுவரை வரலாறு இல்லை",
+    "Save a few Disease Detection or Field Scan analyses first — "
+    "Outbreak Alerts needs some saved history per crop before it "
+    "can compare a recent window against a prior one.":
+        "முதலில் சில நோய் கண்டறிதல் அல்லது வயல் ஆய்வு பகுப்பாய்வுகளை சேமிக்கவும் — "
+        "பரவல் எச்சரிக்கைகள், சமீபத்திய சாளரத்தை முந்தைய சாளரத்துடன் ஒப்பிடுவதற்கு முன், "
+        "ஒவ்வொரு பயிருக்கும் சில சேமிக்கப்பட்ட வரலாறு தேவைப்படுகிறது.",
+    "Risk by crop": "பயிர்வாரியான ஆபத்து",
+    "No crops are currently trending worse — everything with enough "
+    "history is Watch level or better.":
+        "தற்போது எந்த பயிரும் மோசமடையவில்லை — போதிய வரலாறு உள்ள அனைத்தும் "
+        "'கவனி' நிலை அல்லது அதற்கு மேல் உள்ளன.",
+    "crop(s) trending worse:": "பயிர்(கள்) மோசமடைந்து வருகின்றன:",
+    "Recent window": "சமீபத்திய சாளரம்",
+    "Prior window": "முந்தைய சாளரம்",
+    "saved": "சேமிக்கப்பட்டது",
+    "leaves": "இலைகள்",
+    "diseased": "நோய்வாய்ப்பட்டவை",
+    "high severity": "அதிக தீவிரம்",
+    "Dominant:": "முதன்மை:",
+    "Not enough history yet": "இதுவரை போதிய வரலாறு இல்லை",
+    "Change vs. prior window": "முந்தைய சாளரத்துடன் ஒப்பிடும்போது மாற்றம்",
+    "Diseased": "நோய்வாய்ப்பட்டவை",
+    "High severity": "அதிக தீவிரம்",
+    "pts": "புள்ளிகள்",
+    "N/A": "பொருந்தாது",
+    "Saved analyses (recent window)": "சேமிக்கப்பட்ட பகுப்பாய்வுகள் (சமீபத்திய சாளரம்)",
+}
+
+OUTBREAK_TA: dict[str, str] = {
+    "Only {n} saved analysis(es) so far for this crop — "
+    "a few more are needed before a trend can be judged.":
+        "இந்த பயிருக்கு இதுவரை {n} சேமிக்கப்பட்ட பகுப்பாய்வு(கள்) மட்டுமே உள்ளன — "
+        "ஒரு போக்கை மதிப்பிடுவதற்கு முன் இன்னும் சில தேவை.",
+    "{pct:.0f}% of recent analyses are diseased. No prior window yet to compare against.":
+        "சமீபத்திய பகுப்பாய்வுகளில் {pct:.0f}% நோய்வாய்ப்பட்டவை. ஒப்பிட முந்தைய சாளரம் இன்னும் இல்லை.",
+    "No prior window yet to compare against; current detections look manageable.":
+        "ஒப்பிட முந்தைய சாளரம் இன்னும் இல்லை; தற்போதைய கண்டறிதல்கள் கையாளக்கூடியதாகத் தெரிகிறது.",
+    "{pct:.0f}% of recent analyses are diseased, and high-severity share is up "
+    "{delta:+.0f} pts vs. the prior window.":
+        "சமீபத்திய பகுப்பாய்வுகளில் {pct:.0f}% நோய்வாய்ப்பட்டவை, மேலும் அதிக-தீவிர பங்கு "
+        "முந்தைய சாளரத்தை விட {delta:+.0f} புள்ளிகள் அதிகரித்துள்ளது.",
+    "{pct:.0f}% of recent analyses are diseased.":
+        "சமீபத்திய பகுப்பாய்வுகளில் {pct:.0f}% நோய்வாய்ப்பட்டவை.",
+    "Diseased share is up {delta:+.0f} pts vs. the prior window, "
+    "high-severity share up {hdelta:+.0f} pts.":
+        "நோய்வாய்ப்பட்ட பங்கு முந்தைய சாளரத்தை விட {delta:+.0f} புள்ளிகள் அதிகரித்துள்ளது, "
+        "அதிக-தீவிர பங்கு {hdelta:+.0f} புள்ளிகள் அதிகரித்துள்ளது.",
+    "Diseased share is up {delta:+.0f} pts vs. the prior window.":
+        "நோய்வாய்ப்பட்ட பங்கு முந்தைய சாளரத்தை விட {delta:+.0f} புள்ளிகள் அதிகரித்துள்ளது.",
+    "Diseased share is {pct:.0f}% and trending up {delta:+.0f} pts.":
+        "நோய்வாய்ப்பட்ட பங்கு {pct:.0f}% ஆக உள்ளது மற்றும் {delta:+.0f} புள்ளிகள் அதிகரித்து வருகிறது.",
+    "Diseased share is {pct:.0f}%, stable or improving ({delta_txt}).":
+        "நோய்வாய்ப்பட்ட பங்கு {pct:.0f}% ஆக உள்ளது, நிலையானது அல்லது மேம்படுகிறது ({delta_txt}).",
+    "stable": "நிலையானது",
+}
+
+# ---------------------------------------------------------------------------
+# Analysis History page (pages/history.py)
+# ---------------------------------------------------------------------------
+HISTORY_TA: dict[str, str] = {
+    "Analysis History": "பகுப்பாய்வு வரலாறு",
+    "Review, filter, and manage previously saved analyses.":
+        "முன்பு சேமிக்கப்பட்ட பகுப்பாய்வுகளை மதிப்பாய்வு செய்து, வடிகட்டி, நிர்வகிக்கவும்.",
+    "Crop Health": "பயிர் ஆரோக்கியம்",
+    "Disease Detection": "நோய் கண்டறிதல்",
+    "Environmental": "சுற்றுச்சூழல்",
+    "Filters & sorting": "வடிகட்டிகள் & வரிசைப்படுத்துதல்",
+    "Crop": "பயிர்",
+    "Disease": "நோய்",
+    "Risk level": "ஆபத்து அளவு",
+    "Date range": "தேதி வரம்பு",
+    "Sort by": "வரிசைப்படுத்து",
+    "All": "அனைத்தும்",
+    "Date (newest first)": "தேதி (புதியது முதலில்)",
+    "Date (oldest first)": "தேதி (பழையது முதலில்)",
+    "Health score (high to low)": "ஆரோக்கிய மதிப்பெண் (அதிகம் முதல் குறைவு)",
+    "Health score (low to high)": "ஆரோக்கிய மதிப்பெண் (குறைவு முதல் அதிகம்)",
+    "Confidence (high to low)": "நம்பகத்தன்மை (அதிகம் முதல் குறைவு)",
+    "Confidence (low to high)": "நம்பகத்தன்மை (குறைவு முதல் அதிகம்)",
+    "Crop (A-Z)": "பயிர் (A-Z)",
+    "analyses": "பகுப்பாய்வுகள்",
+    "No analyses match the current filters.": "தற்போதைய வடிகட்டிகளுடன் பொருந்தும் பகுப்பாய்வுகள் இல்லை.",
+    "Records": "பதிவுகள்",
+    "Expand a record to view full details or delete it.":
+        "முழு விவரங்களைப் பார்க்க அல்லது நீக்க ஒரு பதிவை விரிவாக்கவும்.",
+    "Expand a record to view the analyzed image and full details, or delete it.":
+        "பகுப்பாய்வு செய்யப்பட்ட படம் மற்றும் முழு விவரங்களைப் பார்க்க அல்லது நீக்க ஒரு பதிவை விரிவாக்கவும்.",
+    "ID": "ID",
+    "Date": "தேதி",
+    "Confidence": "நம்பகத்தன்மை",
+    "Severity": "தீவிரம்",
+    "Health score": "ஆரோக்கிய மதிப்பெண்",
+    "Risk": "ஆபத்து",
+    "Recommendation": "பரிந்துரை",
+    "Result": "முடிவு",
+    "Temp (°C)": "வெப்பநிலை (°C)",
+    "Humidity (%)": "ஈரப்பதம் (%)",
+    "Soil moist. (%)": "மண் ஈரப்பதம் (%)",
+    "Rainfall (mm)": "மழைப்பொழிவு (mm)",
+    "Status": "நிலை",
+    "Model confidence": "மாதிரி நம்பகத்தன்மை",
+    "Disease risk": "நோய் ஆபத்து",
+    "Environmental risk": "சுற்றுச்சூழல் ஆபத்து",
+    "Temperature": "வெப்பநிலை",
+    "Soil moisture": "மண் ஈரப்பதம்",
+    "Rainfall": "மழைப்பொழிவு",
+    "No crop health analyses saved yet. Go to "
+    "<b>Crop Health Analysis</b>, run a calculation, and click "
+    "<b>Save Analysis</b> to see records here.":
+        "இதுவரை பயிர் ஆரோக்கிய பகுப்பாய்வுகள் சேமிக்கப்படவில்லை. <b>பயிர் ஆரோக்கிய "
+        "பகுப்பாய்வு</b> பக்கத்திற்குச் சென்று, ஒரு கணக்கீட்டை இயக்கி, பதிவுகளைக் காண "
+        "<b>பகுப்பாய்வை சேமிக்கவும்</b> என்பதைக் கிளிக் செய்யவும்.",
+    "No disease detection analyses saved yet. Go to "
+    "<b>Disease Detection</b>, analyze a leaf image, and click "
+    "<b>Save Analysis</b> to see records here.":
+        "இதுவரை நோய் கண்டறிதல் பகுப்பாய்வுகள் சேமிக்கப்படவில்லை. <b>நோய் கண்டறிதல்</b> "
+        "பக்கத்திற்குச் சென்று, ஒரு இலைப் படத்தை பகுப்பாய்வு செய்து, பதிவுகளைக் காண "
+        "<b>பகுப்பாய்வை சேமிக்கவும்</b> என்பதைக் கிளிக் செய்யவும்.",
+    "No environmental analyses saved yet. Go to "
+    "<b>Environmental Analysis</b>, assess a reading, and click "
+    "<b>Save Analysis</b> to see records here.":
+        "இதுவரை சுற்றுச்சூழல் பகுப்பாய்வுகள் சேமிக்கப்படவில்லை. <b>சுற்றுச்சூழல் "
+        "பகுப்பாய்வு</b> பக்கத்திற்குச் சென்று, ஒரு அளவீட்டை மதிப்பிட்டு, பதிவுகளைக் காண "
+        "<b>பகுப்பாய்வை சேமிக்கவும்</b> என்பதைக் கிளிக் செய்யவும்.",
+    "No recommendation recorded.": "பரிந்துரை எதுவும் பதிவு செய்யப்படவில்லை.",
+    "Image not available (file may have been moved or removed).":
+        "படம் கிடைக்கவில்லை (கோப்பு நகர்த்தப்பட்டிருக்கலாம் அல்லது அகற்றப்பட்டிருக்கலாம்).",
+    "Analyzed leaf": "பகுப்பாய்வு செய்யப்பட்ட இலை",
+    "Delete {label}": "{label} நீக்கவும்",
+    "Delete this {label} (#{row_id})? This cannot be undone.":
+        "இந்த {label}-ஐ (#{row_id}) நீக்கவா? இதை மீட்டெடுக்க முடியாது.",
+    "Yes, delete": "ஆம், நீக்கவும்",
+    "Cancel": "ரத்துசெய்",
+    "{label} #{row_id} deleted.": "{label} #{row_id} நீக்கப்பட்டது.",
+    "crop health analysis": "பயிர் ஆரோக்கிய பகுப்பாய்வு",
+    "disease analysis": "நோய் பகுப்பாய்வு",
+    "environmental analysis": "சுற்றுச்சூழல் பகுப்பாய்வு",
+    "Loading {label} history failed unexpectedly. Please try again. "
+    "If the problem continues, contact the app maintainer.":
+        "{label} வரலாற்றை ஏற்றுவதில் எதிர்பாராத பிழை ஏற்பட்டது. மீண்டும் "
+        "முயற்சிக்கவும். சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+}
+
+# ---------------------------------------------------------------------------
+# Field Scan page (pages/field_scan.py) — remaining UI strings beyond the
+# disease/crop names already covered by tr_disease/tr_crop.
+# ---------------------------------------------------------------------------
+FIELD_SCAN_TA: dict[str, str] = {
+    "Field Scan": "வயல் ஆய்வு",
+    "Upload a batch of leaf photos from a field walk and get one aggregated health report.":
+        "வயல் சுற்றுப்பயணத்திலிருந்து இலைப் புகைப்படங்களின் தொகுப்பைப் பதிவேற்றி ஒரு "
+        "ஒருங்கிணைந்த ஆரோக்கிய அறிக்கையைப் பெறவும்.",
+    "No trained model found.": "பயிற்சி பெற்ற மாதிரி எதுவும் இல்லை.",
+    "Train a disease model first — see the Disease Detection page for instructions.":
+        "முதலில் ஒரு நோய் மாதிரியைப் பயிற்சி செய்யவும் — வழிமுறைகளுக்கு நோய் கண்டறிதல் பக்கத்தைப் பார்க்கவும்.",
+    "Model unavailable.": "மாதிரி கிடைக்கவில்லை.",
+    "{crop}'s model file couldn't be loaded even though it's listed as "
+    "trained — check the server logs for details.":
+        "{crop} மாதிரிக் கோப்பு பயிற்சி பெற்றதாக பட்டியலிடப்பட்டிருந்தும் ஏற்ற முடியவில்லை — "
+        "விவரங்களுக்கு சேவையக பதிவுகளைச் சரிபார்க்கவும்.",
+    "1 · Upload leaf photos": "1 · இலைப் புகைப்படங்களைப் பதிவேற்றவும்",
+    "Leaf images (JPG / PNG) — up to {n} at once":
+        "இலைப் படங்கள் (JPG / PNG) — ஒரே நேரத்தில் {n} வரை",
+    "photo(s) uploaded — only the first {n} "
+    "will be scanned. Split larger batches into multiple scans.":
+        " புகைப்படங்கள் பதிவேற்றப்பட்டன — முதல் {n} மட்டுமே "
+        "ஆய்வு செய்யப்படும். பெரிய தொகுப்புகளை பல ஆய்வுகளாகப் பிரிக்கவும்.",
+    "photo(s) ready to scan.": "புகைப்படங்கள் ஆய்வுக்குத் தயார்.",
+    "Drop 10-20+ leaf photos here — one field walk, one report.":
+        "இங்கே 10-20+ இலைப் புகைப்படங்களை விடவும் — ஒரு வயல் சுற்றுப்பயணம், ஒரு அறிக்கை.",
+    "Advanced options": "மேம்பட்ட விருப்பங்கள்",
+    "Confidence threshold": "நம்பகத்தன்மை வரம்பு",
+    "Per-leaf predictions below this confidence are flagged as uncertain.":
+        "இந்த நம்பகத்தன்மைக்குக் கீழ் உள்ள ஒவ்வொரு இலை முன்னறிவிப்புகளும் உறுதியற்றதாகக் குறிக்கப்படும்.",
+    "Preprocessing (applied to every photo in the batch)":
+        "முன்செயலாக்கம் (தொகுப்பில் உள்ள ஒவ்வொரு புகைப்படத்திற்கும் பயன்படுத்தப்படும்)",
+    "Noise reduction": "இரைச்சல் குறைப்பு",
+    "Background handling": "பின்னணி கையாளுதல்",
+    "Run Field Scan": "வயல் ஆய்வை இயக்கவும்",
+    "2 · Field health report": "2 · வயல் ஆரோக்கிய அறிக்கை",
+    "The field scan failed unexpectedly. Please try again. "
+    "If the problem continues, contact the app maintainer.":
+        "வயல் ஆய்வு எதிர்பாராத முறையில் தோல்வியடைந்தது. மீண்டும் முயற்சிக்கவும். "
+        "சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+    "Awaiting scan": "ஆய்வுக்காகக் காத்திருக்கிறது",
+    "Upload several leaf photos and click **Run Field Scan** to see the "
+    "aggregated field health report — % healthy vs diseased, dominant "
+    "disease, severity breakdown, and a field health score.":
+        "பல இலைப் புகைப்படங்களைப் பதிவேற்றி, ஒருங்கிணைந்த வயல் ஆரோக்கிய அறிக்கையைப் "
+        "பார்க்க **வயல் ஆய்வை இயக்கவும்** என்பதைக் கிளிக் செய்யவும் — % ஆரோக்கியம் "
+        "எதிராக நோய்வாய்ப்பட்டவை, முதன்மை நோய், தீவிர பிரிவு, மற்றும் வயல் ஆரோக்கிய மதிப்பெண்.",
+    "None of the uploaded photos could be analyzed. See the issues below.":
+        "பதிவேற்றப்பட்ட புகைப்படங்கள் எதுவும் பகுப்பாய்வு செய்ய முடியவில்லை. கீழே உள்ள சிக்கல்களைப் பார்க்கவும்.",
+    "{n_uncertain} of {n_total} photo(s) didn't look like confident leaf matches":
+        "{n_total} புகைப்படங்களில் {n_uncertain} நம்பகமான இலை பொருத்தங்களாகத் தெரியவில்லை",
+    "They're still included in the counts and charts here, but treat "
+    "those specific results as unreliable and consider re-scanning them.":
+        "அவை இங்குள்ள எண்ணிக்கைகள் மற்றும் விளக்கப்படங்களில் இன்னும் சேர்க்கப்பட்டுள்ளன, "
+        "ஆனால் அந்த குறிப்பிட்ட முடிவுகளை நம்பகமற்றதாகக் கருதி மீண்டும் ஆய்வு செய்ய பரிசீலிக்கவும்.",
+    "Photos scanned": "ஆய்வு செய்யப்பட்ட புகைப்படங்கள்",
+    "Healthy": "ஆரோக்கியமானது",
+    "leaves": "இலைகள்",
+    "Dominant disease": "முதன்மை நோய்",
+    "None detected": "எதுவும் கண்டறியப்படவில்லை",
+    "Diseased leaves": "நோய்வாய்ப்பட்ட இலைகள்",
+    "Field health score": "வயல் ஆரோக்கிய மதிப்பெண்",
+    "Disease breakdown across the field": "வயல் முழுவதும் நோய் பிரிவு",
+    "Leaves": "இலைகள்",
+    "Severity breakdown": "தீவிர பிரிவு",
+    "Individual leaves": "தனிப்பட்ட இலைகள்",
+    "low confidence": "குறைந்த நம்பகத்தன்மை",
+    "uncertain match": "உறுதியற்ற பொருத்தம்",
+    "confidence": "நம்பகத்தன்மை",
+    "photo(s) skipped": "புகைப்படங்கள் தவிர்க்கப்பட்டன",
+    "New Scan": "புதிய ஆய்வு",
+    "Download PDF Report": "PDF அறிக்கையைப் பதிவிறக்கவும்",
+    "Field scan saved to database (ID: {id}).":
+        "வயல் ஆய்வு தரவுத்தளத்தில் சேமிக்கப்பட்டது (ID: {id}).",
+    "Saved": "சேமிக்கப்பட்டது",
+    "Save Field Scan": "வயல் ஆய்வை சேமிக்கவும்",
+    "Saving field scan…": "வயல் ஆய்வு சேமிக்கப்படுகிறது…",
+    "Couldn't generate the PDF report right now. Please try again.":
+        "இப்போது PDF அறிக்கையை உருவாக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+}
+
+
+# ---------------------------------------------------------------------------
 # Lookup helpers — every one falls back to the English source on a miss,
 # so an untranslated string never breaks the page, it just stays English.
 # ---------------------------------------------------------------------------
@@ -816,6 +1117,12 @@ def tr_template(english_template: str, lang: str, **kwargs) -> str:
         template = HEALTH_ENGINE_TA[english_template]
     elif lang == "ta" and english_template in REC_MISC_TA:
         template = REC_MISC_TA[english_template]
+    elif lang == "ta" and english_template in OUTBREAK_TA:
+        template = OUTBREAK_TA[english_template]
+    elif lang == "ta" and english_template in HISTORY_TA:
+        template = HISTORY_TA[english_template]
+    elif lang == "ta" and english_template in FIELD_SCAN_TA:
+        template = FIELD_SCAN_TA[english_template]
     else:
         template = english_template
     return template.format(**kwargs)
@@ -860,7 +1167,7 @@ def tr_label(text: str, lang: str) -> str:
         return text
     for table in (UI_LABELS_TA, NAV_LABELS_TA, HEALTH_STATUS_TA, RISK_LEVEL_TA, MISC_TA, HOME_TA,
                   ENV_UI_TA, ENV_FACTOR_LABELS_TA, ENV_STATUS_TA, ENV_NOTE_TA, HEALTH_ENGINE_TA, REC_MISC_TA,
-                  HEALTH_PAGE_TA):
+                  HEALTH_PAGE_TA, ABOUT_TA, ALERTS_TA, OUTBREAK_TA, HISTORY_TA, FIELD_SCAN_TA):
         if text in table:
             return table[text]
     return text

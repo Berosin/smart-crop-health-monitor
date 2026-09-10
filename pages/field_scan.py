@@ -42,7 +42,7 @@ import streamlit as st
 
 from config import CONFIDENCE_THRESHOLD, DEFAULT_DISEASE_CROP, get_trained_crops, get_model_dir
 from pages.disease import load_model, preprocess_image, SEVERITY_MAP, CLASS_COLORS, render_yield_loss_estimator
-from src.i18n import get_language, tr_crop, tr_disease, tr_severity, tr_label
+from src.i18n import get_language, tr_crop, tr_disease, tr_severity, tr_label, tr_template
 from src.db import insert_field_scan
 from src.errors import logger, safe_action
 from src.health_engine import compute_disease_risk_score, classify_health_status
@@ -69,32 +69,36 @@ SEVERITY_ORDER = ["None", "Mild", "Moderate", "High"]
 # Page
 # ---------------------------------------------------------------------------
 def render() -> None:
+    lang = get_language()
     page_header(
         "field_scan",
-        "Field Scan",
-        "Upload a batch of leaf photos from a field walk and get one aggregated health report.",
+        tr_label("Field Scan", lang),
+        tr_label("Upload a batch of leaf photos from a field walk and get one aggregated health report.", lang),
     )
 
     trained_crops = get_trained_crops()
     if not trained_crops:
         callout(
-            f"{icon_html('warning', size=18)}<b>No trained model found.</b> "
-            "Train a disease model first — see the Disease Detection page for instructions."
+            f"{icon_html('warning', size=18)}<b>{tr_label('No trained model found.', lang)}</b> "
+            f"{tr_label('Train a disease model first — see the Disease Detection page for instructions.', lang)}"
         )
         footer()
         return
 
     default_index = trained_crops.index(DEFAULT_DISEASE_CROP) if DEFAULT_DISEASE_CROP in trained_crops else 0
-    crop = st.selectbox("Crop", trained_crops, index=default_index)
+    crop = st.selectbox(tr_label("Crop", lang), trained_crops, index=default_index, format_func=lambda c: tr_crop(c, lang))
 
     # Same cached loader Disease Detection uses — switching crops there or
     # here reuses the same in-memory model, no duplicate loading.
     model, class_names = load_model(crop)
     if model is None:
         callout(
-            f"{icon_html('warning', size=18)}<b>Model unavailable.</b> "
-            f"{crop}'s model file couldn't be loaded even though it's listed as trained — "
-            "check the server logs for details."
+            f"{icon_html('warning', size=18)}<b>{tr_label('Model unavailable.', lang)}</b> "
+            + tr_template(
+                "{crop}'s model file couldn't be loaded even though it's listed as "
+                "trained — check the server logs for details.",
+                lang, crop=tr_crop(crop, lang),
+            )
         )
         footer()
         return
@@ -105,9 +109,9 @@ def render() -> None:
         st.session_state.pop("_field_saved_token", None)
         st.session_state.pop("_field_saved_id", None)
 
-    st.markdown("#### 1 · Upload leaf photos")
+    st.markdown(f"#### {tr_label('1 · Upload leaf photos', lang)}")
     uploaded_files = st.file_uploader(
-        f"Leaf images (JPG / PNG) — up to {MAX_IMAGES} at once",
+        tr_template("Leaf images (JPG / PNG) — up to {n} at once", lang, n=MAX_IMAGES),
         type=["jpg", "jpeg", "png"],
         accept_multiple_files=True,
     )
@@ -115,31 +119,34 @@ def render() -> None:
     if uploaded_files:
         if len(uploaded_files) > MAX_IMAGES:
             callout(
-                f"{icon_html('warning', size=18)}"
-                f"{len(uploaded_files)} photos uploaded — only the first {MAX_IMAGES} "
-                "will be scanned. Split larger batches into multiple scans."
+                f"{icon_html('warning', size=18)}{len(uploaded_files)} "
+                + tr_template(
+                    "photo(s) uploaded — only the first {n} "
+                    "will be scanned. Split larger batches into multiple scans.",
+                    lang, n=MAX_IMAGES,
+                )
             )
             uploaded_files = uploaded_files[:MAX_IMAGES]
-        st.caption(f"{len(uploaded_files)} photo(s) ready to scan.")
+        st.caption(f"{len(uploaded_files)} {tr_label('photo(s) ready to scan.', lang)}")
     else:
-        st.info("Drop 10-20+ leaf photos here — one field walk, one report.")
+        st.info(tr_label("Drop 10-20+ leaf photos here — one field walk, one report.", lang))
 
-    with st.expander("Advanced options"):
+    with st.expander(tr_label("Advanced options", lang)):
         threshold = st.slider(
-            "Confidence threshold",
+            tr_label("Confidence threshold", lang),
             0.0, 1.0, float(CONFIDENCE_THRESHOLD), 0.05,
-            help="Per-leaf predictions below this confidence are flagged as uncertain.",
+            help=tr_label("Per-leaf predictions below this confidence are flagged as uncertain.", lang),
         )
-        st.markdown("**Preprocessing** (applied to every photo in the batch)")
-        denoise = st.checkbox("Noise reduction", value=False)
-        remove_background = st.checkbox("Background handling", value=False)
+        st.markdown(f"**{tr_label('Preprocessing (applied to every photo in the batch)', lang)}**")
+        denoise = st.checkbox(tr_label("Noise reduction", lang), value=False)
+        remove_background = st.checkbox(tr_label("Background handling", lang), value=False)
 
     run = st.button(
-        "Run Field Scan", type="primary", use_container_width=True,
+        tr_label("Run Field Scan", lang), type="primary", use_container_width=True,
         disabled=not uploaded_files,
     )
 
-    st.markdown("#### 2 · Field health report")
+    st.markdown(f"#### {tr_label('2 · Field health report', lang)}")
 
     report = st.session_state.get("_field_report")
 
@@ -153,18 +160,22 @@ def render() -> None:
             st.session_state.pop("_field_saved_id", None)
         except Exception:
             logger.exception("Unexpected error during field scan")
-            st.error(
+            st.error(tr_label(
                 "The field scan failed unexpectedly. Please try again. "
-                "If the problem continues, contact the app maintainer."
-            )
+                "If the problem continues, contact the app maintainer.",
+                lang,
+            ))
             report = None
 
     if report is None:
         card(
-            "Awaiting scan",
-            "Upload several leaf photos and click **Run Field Scan** to see the "
-            "aggregated field health report — % healthy vs diseased, dominant "
-            "disease, severity breakdown, and a field health score.",
+            tr_label("Awaiting scan", lang),
+            tr_label(
+                "Upload several leaf photos and click **Run Field Scan** to see the "
+                "aggregated field health report — % healthy vs diseased, dominant "
+                "disease, severity breakdown, and a field health score.",
+                lang,
+            ),
         )
     else:
         _render_report(report)
@@ -315,37 +326,44 @@ def _render_report(report: dict) -> None:
 
     if report["n_total"] == 0:
         callout(
-            f"{icon_html('warning', size=18)}None of the uploaded photos could "
-            "be analyzed. See the issues below."
+            f"{icon_html('warning', size=18)}"
+            + tr_label("None of the uploaded photos could be analyzed. See the issues below.", lang)
         )
-        _render_failures(report["failures"])
+        _render_failures(report["failures"], lang)
         return
 
     if report.get("n_uncertain"):
         callout(
-            f"{icon_html('warning', size=18)}<b>{report['n_uncertain']} of {report['n_total']} "
-            f"photo(s) didn't look like confident leaf matches</b> — flagged below with a "
-            "muted border. They're still included in the counts and charts here, but treat "
-            "those specific results as unreliable and consider re-scanning them."
+            f"{icon_html('warning', size=18)}<b>"
+            + tr_template(
+                "{n_uncertain} of {n_total} photo(s) didn't look like confident leaf matches",
+                lang, n_uncertain=report['n_uncertain'], n_total=report['n_total'],
+            )
+            + "</b> — "
+            + tr_label(
+                "They're still included in the counts and charts here, but treat "
+                "those specific results as unreliable and consider re-scanning them.",
+                lang,
+            )
         )
 
     # KPI row
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        metric_tile("Photos scanned", str(report["n_total"]))
+        metric_tile(tr_label("Photos scanned", lang), str(report["n_total"]))
     with c2:
-        metric_tile("Healthy", f"{report['healthy_pct']:.0f}%",
-                     f"{report['n_healthy']} / {report['n_total']} leaves")
+        metric_tile(tr_label("Healthy", lang), f"{report['healthy_pct']:.0f}%",
+                     f"{report['n_healthy']} / {report['n_total']} {tr_label('leaves', lang)}")
     with c3:
-        metric_tile("Dominant disease", tr_disease(report["dominant_disease"], lang) if report["dominant_disease"] else "None detected")
+        metric_tile(tr_label("Dominant disease", lang), tr_disease(report["dominant_disease"], lang) if report["dominant_disease"] else tr_label("None detected", lang))
     with c4:
-        metric_tile("Diseased leaves", str(report["n_diseased"]))
+        metric_tile(tr_label("Diseased leaves", lang), str(report["n_diseased"]))
 
     st.write("")
-    health_score_card(report["field_health_score"], label="Field health score")
+    health_score_card(report["field_health_score"], label=tr_label("Field health score", lang))
 
     # Disease breakdown
-    st.markdown("#### Disease breakdown across the field")
+    st.markdown(f"#### {tr_label('Disease breakdown across the field', lang)}")
     dc = report["disease_counts"]
     names = sorted(dc, key=lambda k: dc[k], reverse=True)
     fig = go.Figure(go.Bar(
@@ -359,14 +377,14 @@ def _render_report(report: dict) -> None:
     fig.update_layout(
         **CHART_THEME,
         margin=dict(t=10, b=10),
-        xaxis_title="Leaves",
+        xaxis_title=tr_label("Leaves", lang),
         height=max(200, len(names) * 42),
         showlegend=False,
     )
     st.plotly_chart(fig, use_container_width=True)
 
     # Severity breakdown
-    st.markdown("#### Severity breakdown")
+    st.markdown(f"#### {tr_label('Severity breakdown', lang)}")
     sc = report["severity_counts"]
     present = [s for s in SEVERITY_ORDER if s in sc] + [s for s in sc if s not in SEVERITY_ORDER]
     sev_cols = st.columns(len(present))
@@ -375,7 +393,7 @@ def _render_report(report: dict) -> None:
             st.markdown(
                 f"""
                 <div class="metric-tile" style="border-left:5px solid {SEVERITY_COLORS.get(s, '#93998A')}">
-                  <div class="label">{s}</div>
+                  <div class="label">{tr_severity(s, lang)}</div>
                   <div class="value">{sc[s]}</div>
                 </div>
                 """,
@@ -400,7 +418,7 @@ def _render_report(report: dict) -> None:
         )
 
     # Per-leaf thumbnail grid
-    st.markdown("#### Individual leaves")
+    st.markdown(f"#### {tr_label('Individual leaves', lang)}")
     leaves = report["leaves"]
     n_cols = 4
     for row_start in range(0, len(leaves), n_cols):
@@ -413,38 +431,38 @@ def _render_report(report: dict) -> None:
                     "#7FA687" if leaf["is_healthy"] else SEVERITY_COLORS.get(leaf["severity"], "#B5564B")
                 )
                 st.image(leaf["thumb"], use_container_width=True)
-                low_conf_note = " · low confidence" if leaf["low_confidence"] else ""
-                uncertain_note = f" {icon_html('warning', size=12, margin_right='.2em')}uncertain match" if is_uncertain else ""
+                low_conf_note = f" · {tr_label('low confidence', lang)}" if leaf["low_confidence"] else ""
+                uncertain_note = f" {icon_html('warning', size=12, margin_right='.2em')}{tr_label('uncertain match', lang)}" if is_uncertain else ""
                 st.markdown(
                     f"""
                     <div style="border-left:4px solid {border};padding:.15rem .5rem;
                                 font-size:.78rem;color:#4E5646;margin:-.4rem 0 .8rem">
-                      <b>{tr_disease(leaf['disease'], lang)}</b><br/>{leaf['confidence']*100:.0f}% confidence{low_conf_note}{uncertain_note}
+                      <b>{tr_disease(leaf['disease'], lang)}</b><br/>{leaf['confidence']*100:.0f}% {tr_label('confidence', lang)}{low_conf_note}{uncertain_note}
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
-    _render_failures(report["failures"])
+    _render_failures(report["failures"], lang)
 
     # PDF report export
     st.markdown("---")
-    _render_pdf_download(report, rep_severity)
+    _render_pdf_download(report, rep_severity, lang)
 
     st.markdown("---")
-    _render_save_section(report)
+    _render_save_section(report, lang)
 
-    if st.button("New Scan", use_container_width=True):
+    if st.button(tr_label("New Scan", lang), use_container_width=True):
         st.session_state["_field_report"] = None
         st.session_state.pop("_field_saved_token", None)
         st.session_state.pop("_field_saved_id", None)
         st.rerun()
 
 
-def _render_failures(failures: list[tuple[str, str]]) -> None:
+def _render_failures(failures: list[tuple[str, str]], lang: str) -> None:
     if not failures:
         return
-    with st.expander(f"{len(failures)} photo(s) skipped"):
+    with st.expander(f"{len(failures)} {tr_label('photo(s) skipped', lang)}"):
         for name, reason in failures:
             st.markdown(f"- **{name}** — {reason}")
 
@@ -475,7 +493,7 @@ def _build_field_scan_record(report: dict) -> dict:
 # ---------------------------------------------------------------------------
 # PDF report export
 # ---------------------------------------------------------------------------
-def _render_pdf_download(report: dict, rep_severity: str | None) -> None:
+def _render_pdf_download(report: dict, rep_severity: str | None, lang: str) -> None:
     """A downloadable, farmer-shareable PDF for this field scan.
 
     Reuses whatever the yield-loss calculator above is currently set to
@@ -500,12 +518,12 @@ def _render_pdf_download(report: dict, rep_severity: str | None) -> None:
         pdf_bytes = generate_field_scan_report_pdf(report, yield_loss_estimate=yield_loss_estimate)
     except Exception:
         logger.exception("Unexpected error generating field scan PDF report")
-        st.error("Couldn't generate the PDF report right now. Please try again.")
+        st.error(tr_label("Couldn't generate the PDF report right now. Please try again.", lang))
         return
 
     file_name = f"field_scan_{report['crop'].lower()}_{int(time.time())}.pdf"
     st.download_button(
-        "Download PDF Report",
+        tr_label("Download PDF Report", lang),
         data=pdf_bytes,
         file_name=file_name,
         mime="application/pdf",
@@ -514,7 +532,7 @@ def _render_pdf_download(report: dict, rep_severity: str | None) -> None:
     )
 
 
-def _render_save_section(report: dict) -> None:
+def _render_save_section(report: dict, lang: str) -> None:
     """'Save Field Scan' button, guarded against duplicate inserts.
 
     Mirrors pages/disease.py's save pattern: each freshly *computed* report
@@ -525,13 +543,13 @@ def _render_save_section(report: dict) -> None:
 
     if saved_token == token:
         saved_id = st.session_state.get("_field_saved_id")
-        st.success(f"Field scan saved to database (ID: {saved_id}).")
-        st.button("Saved ✓", use_container_width=True, disabled=True, key="_field_saved_btn")
+        st.success(tr_template("Field scan saved to database (ID: {id}).", lang, id=saved_id))
+        st.button(f"{tr_label('Saved', lang)} ✓", use_container_width=True, disabled=True, key="_field_saved_btn")
         return
 
-    if st.button("Save Field Scan", type="primary", use_container_width=True, key="_field_save_btn"):
+    if st.button(tr_label("Save Field Scan", lang), type="primary", use_container_width=True, key="_field_save_btn"):
         with safe_action("Saving field scan"):
-            with st.spinner("Saving field scan…"):
+            with st.spinner(tr_label("Saving field scan…", lang)):
                 record = _build_field_scan_record(report)
                 scan_id = insert_field_scan(record)
             st.session_state["_field_saved_token"] = token

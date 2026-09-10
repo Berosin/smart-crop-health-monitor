@@ -27,6 +27,7 @@ from src.db import (
 )
 from src.errors import safe_action, DatabaseError, logger
 from src.health_engine import classify_health_status
+from src.i18n import get_language, tr_label, tr_template, tr_crop, tr_disease, tr_severity
 from src.recommendation_engine import CATEGORY_ICON, PRIORITY_COLOR
 from utils.ui import (
     page_header,
@@ -65,21 +66,22 @@ ENV_SORT_OPTIONS = {
 # Page
 # ---------------------------------------------------------------------------
 def render() -> None:
+    lang = get_language()
     page_header(
         "history",
-        "Analysis History",
-        "Review, filter, and manage previously saved analyses.",
+        tr_label("Analysis History", lang),
+        tr_label("Review, filter, and manage previously saved analyses.", lang),
     )
 
     tab_health, tab_disease, tab_env = st.tabs(
-        ["Crop Health", "Disease Detection", "Environmental"]
+        [tr_label("Crop Health", lang), tr_label("Disease Detection", lang), tr_label("Environmental", lang)]
     )
     with tab_health:
-        _render_health_tab()
+        _render_health_tab(lang)
     with tab_disease:
-        _render_disease_tab()
+        _render_disease_tab(lang)
     with tab_env:
-        _render_env_tab()
+        _render_env_tab(lang)
 
     footer()
 
@@ -87,7 +89,7 @@ def render() -> None:
 # ---------------------------------------------------------------------------
 # Shared helpers (used across all three tabs)
 # ---------------------------------------------------------------------------
-def _load_rows(loader, label: str) -> list[dict] | None:
+def _load_rows(loader, label: str, lang: str) -> list[dict] | None:
     """Fetch rows for one tab, showing a consistent error state on failure.
 
     Returns None (caller should stop rendering that tab) if loading failed.
@@ -100,8 +102,11 @@ def _load_rows(loader, label: str) -> list[dict] | None:
     except Exception:
         logger.exception(f"Unexpected error loading {label} history")
         st.error(
-            f"Loading {label} history failed unexpectedly. Please try again. "
-            "If the problem continues, contact the app maintainer."
+            tr_template(
+                "Loading {label} history failed unexpectedly. Please try again. "
+                "If the problem continues, contact the app maintainer.",
+                lang, label=label,
+            )
         )
         return None
 
@@ -127,7 +132,7 @@ def _history_metric(label: str, value: object) -> None:
     )
 
 
-def _render_delete_control(row_id: int, delete_fn, key_prefix: str, label: str = "analysis") -> None:
+def _render_delete_control(row_id: int, delete_fn, key_prefix: str, label: str, lang: str) -> None:
     """Two-step delete: first click asks for confirmation, second click
     actually deletes — avoids removing a record from a single accidental
     click. Shared across all three tabs; key_prefix keeps widget keys
@@ -135,24 +140,30 @@ def _render_delete_control(row_id: int, delete_fn, key_prefix: str, label: str =
     one table.
     """
     confirm_key = f"{key_prefix}_confirm_delete_{row_id}"
+    label_ta = tr_label(label, lang)
 
     if not st.session_state.get(confirm_key, False):
-        if st.button(f"Delete {label}", key=f"{key_prefix}_delete_btn_{row_id}"):
+        if st.button(tr_template("Delete {label}", lang, label=label_ta), key=f"{key_prefix}_delete_btn_{row_id}"):
             st.session_state[confirm_key] = True
             st.rerun()
         return
 
-    st.warning(f"Delete this {label} (#{row_id})? This cannot be undone.")
+    st.warning(
+        tr_template(
+            "Delete this {label} (#{row_id})? This cannot be undone.",
+            lang, label=label_ta, row_id=row_id,
+        )
+    )
     yes_col, no_col = st.columns(2)
     with yes_col:
-        if st.button("Yes, delete", key=f"{key_prefix}_confirm_yes_{row_id}", type="primary"):
+        if st.button(tr_label("Yes, delete", lang), key=f"{key_prefix}_confirm_yes_{row_id}", type="primary"):
             with safe_action(f"Deleting {label}"):
                 delete_fn(row_id)
                 st.session_state.pop(confirm_key, None)
-                st.success(f"{label.capitalize()} #{row_id} deleted.")
+                st.success(tr_template("{label} #{row_id} deleted.", lang, label=label_ta.capitalize(), row_id=row_id))
                 st.rerun()
     with no_col:
-        if st.button("Cancel", key=f"{key_prefix}_confirm_no_{row_id}"):
+        if st.button(tr_label("Cancel", lang), key=f"{key_prefix}_confirm_no_{row_id}"):
             st.session_state.pop(confirm_key, None)
             st.rerun()
 
@@ -175,35 +186,48 @@ def _summary_of(raw: str | None) -> str:
 # ---------------------------------------------------------------------------
 # Tab 1 — Crop Health
 # ---------------------------------------------------------------------------
-def _render_health_tab() -> None:
-    rows = _load_rows(get_analyses, "crop health analysis")
+def _render_health_tab(lang: str) -> None:
+    rows = _load_rows(get_analyses, "crop health analysis", lang)
     if rows is None:
         return
 
     if not rows:
         callout(
-            f"{icon_html('history', size=18)}No crop health analyses saved yet. Go to "
-            "<b>Crop Health Analysis</b>, run a calculation, and click "
-            "<b>Save Analysis</b> to see records here."
+            f"{icon_html('history', size=18)}"
+            + tr_label(
+                "No crop health analyses saved yet. Go to "
+                "<b>Crop Health Analysis</b>, run a calculation, and click "
+                "<b>Save Analysis</b> to see records here.",
+                lang,
+            )
         )
         return
 
-    df = _health_to_dataframe(rows)
+    df = _health_to_dataframe(rows, lang)
 
-    st.markdown("#### Filters & sorting")
+    st.markdown(f"#### {tr_label('Filters & sorting', lang)}")
     f1, f2, f3, f4 = st.columns([1.2, 1.2, 1.4, 1.2])
     with f1:
         crop_options = ["All"] + sorted(df["crop"].unique())
-        crop_filter = st.multiselect("Crop", crop_options, default=["All"], key="_hist_health_crop")
+        crop_filter = st.multiselect(
+            tr_label("Crop", lang), crop_options, default=["All"], key="_hist_health_crop",
+            format_func=lambda c: tr_label(c, lang) if c == "All" else tr_crop(c, lang),
+        )
     with f2:
         disease_options = ["All"] + sorted(df["disease"].dropna().unique())
-        disease_filter = st.multiselect("Disease", disease_options, default=["All"], key="_hist_health_disease")
+        disease_filter = st.multiselect(
+            tr_label("Disease", lang), disease_options, default=["All"], key="_hist_health_disease",
+            format_func=lambda d: tr_label(d, lang) if d in ("All", "Unknown") else tr_disease(d, lang),
+        )
     with f3:
         min_date, max_date = df["_dt"].min().date(), df["_dt"].max().date()
-        date_range = st.date_input("Date range", value=(min_date, max_date),
+        date_range = st.date_input(tr_label("Date range", lang), value=(min_date, max_date),
                                    min_value=min_date, max_value=max_date, key="_hist_health_dates")
     with f4:
-        sort_choice = st.selectbox("Sort by", list(HEALTH_SORT_OPTIONS.keys()), key="_hist_health_sort")
+        sort_choice = st.selectbox(
+            tr_label("Sort by", lang), list(HEALTH_SORT_OPTIONS.keys()), key="_hist_health_sort",
+            format_func=lambda o: tr_label(o, lang),
+        )
 
     crop_matches = "All" in crop_filter or df["crop"].isin(crop_filter)
     disease_matches = "All" in disease_filter or df["disease"].isin(disease_filter)
@@ -215,33 +239,44 @@ def _render_health_tab() -> None:
     sort_col, ascending = HEALTH_SORT_OPTIONS[sort_choice]
     view = df[mask].sort_values(sort_col, ascending=ascending)
 
-    st.markdown(f"#### {len(view)} analyses")
+    st.markdown(f"#### {len(view)} {tr_label('analyses', lang)}")
     if len(view) == 0:
-        callout("No analyses match the current filters.")
+        callout(tr_label("No analyses match the current filters.", lang))
         return
 
+    display = view.copy()
+    display["crop"] = display["crop"].apply(lambda c: tr_crop(c, lang))
+    display["disease"] = display["disease"].apply(lambda d: tr_label(d, lang) if d == "Unknown" else tr_disease(d, lang))
+    display["severity"] = display["severity"].apply(lambda s: tr_severity(s, lang) if s else s)
+    display["risk"] = view.apply(
+        lambda r: f"{tr_label('Disease', lang)}: {tr_label(r['disease_risk'], lang) if r['disease_risk'] else '—'} · "
+                  f"{tr_label('Environment', lang)}: {tr_label(r['environmental_risk'], lang) if r['environmental_risk'] else '—'}",
+        axis=1,
+    )
+
     st.dataframe(
-        view[["id", "date", "crop", "disease", "confidence", "severity",
-              "health_score", "risk", "recommendation_summary"]],
+        display[["id", "date", "crop", "disease", "confidence", "severity",
+                 "health_score", "risk", "recommendation_summary"]],
         use_container_width=True,
         column_config={
-            "id": "ID", "date": "Date", "crop": "Crop", "disease": "Disease",
-            "confidence": st.column_config.NumberColumn("Confidence", format="%.0f%%"),
-            "severity": "Severity",
+            "id": tr_label("ID", lang), "date": tr_label("Date", lang), "crop": tr_label("Crop", lang),
+            "disease": tr_label("Disease", lang),
+            "confidence": st.column_config.NumberColumn(tr_label("Confidence", lang), format="%.0f%%"),
+            "severity": tr_label("Severity", lang),
             "health_score": st.column_config.ProgressColumn(
-                "Health score", min_value=0, max_value=100, format="%d"),
-            "risk": "Risk", "recommendation_summary": "Recommendation",
+                tr_label("Health score", lang), min_value=0, max_value=100, format="%d"),
+            "risk": tr_label("Risk", lang), "recommendation_summary": tr_label("Recommendation", lang),
         },
         hide_index=True,
     )
 
-    st.markdown("#### Records")
-    st.caption("Expand a record to view full details or delete it.")
+    st.markdown(f"#### {tr_label('Records', lang)}")
+    st.caption(tr_label("Expand a record to view full details or delete it.", lang))
     for _, row in view.iterrows():
-        _render_health_record(row)
+        _render_health_record(row, lang)
 
 
-def _health_to_dataframe(rows: list[dict]) -> pd.DataFrame:
+def _health_to_dataframe(rows: list[dict], lang: str) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     df = df.rename(columns={"crop_name": "crop"})
     df = _prep_datetime(df)
@@ -262,50 +297,50 @@ def _health_to_dataframe(rows: list[dict]) -> pd.DataFrame:
     return df
 
 
-def _render_health_record(row: pd.Series) -> None:
+def _render_health_record(row: pd.Series, lang: str) -> None:
     row_id = int(row["id"])
-    label = f"#{row_id} · {row['crop']} · {row['disease']} · {row['date']}"
+    label = f"#{row_id} · {tr_crop(row['crop'], lang)} · {tr_disease(row['disease'], lang)} · {row['date']}"
 
     with st.expander(label):
         c1, c2 = st.columns(2)
         with c1:
-            _history_metric("Crop", row["crop"])
+            _history_metric(tr_label("Crop", lang), tr_crop(row["crop"], lang))
         with c2:
-            _history_metric("Status", row["status"])
+            _history_metric(tr_label("Status", lang), tr_label(row["status"], lang))
 
         c3, c4 = st.columns(2)
         with c3:
-            _history_metric("Health score", int(row["health_score"]))
+            _history_metric(tr_label("Health score", lang), int(row["health_score"]))
         with c4:
-            _history_metric("Date", row["date"])
+            _history_metric(tr_label("Date", lang), row["date"])
 
         d1, d2, d3 = st.columns(3)
         with d1:
-            _history_metric("Disease", row["disease"] or "—")
+            _history_metric(tr_label("Disease", lang), tr_disease(row["disease"], lang) if row["disease"] else "—")
         with d2:
-            _history_metric("Confidence", f"{row['confidence']:.0f}%" if pd.notna(row["confidence"]) else "—")
+            _history_metric(tr_label("Confidence", lang), f"{row['confidence']:.0f}%" if pd.notna(row["confidence"]) else "—")
         with d3:
-            _history_metric("Severity", row["severity"] or "—")
+            _history_metric(tr_label("Severity", lang), tr_severity(row["severity"], lang) if row["severity"] else "—")
 
         r1, r2 = st.columns(2)
         with r1:
-            _history_metric("Disease risk", row["disease_risk"] or "—")
+            _history_metric(tr_label("Disease risk", lang), tr_label(row["disease_risk"], lang) if row["disease_risk"] else "—")
         with r2:
-            _history_metric("Environmental risk", row["environmental_risk"] or "—")
+            _history_metric(tr_label("Environmental risk", lang), tr_label(row["environmental_risk"], lang) if row["environmental_risk"] else "—")
 
-        st.markdown("**Recommendation**")
-        _render_structured_recommendation(row["recommendation"])
+        st.markdown(f"**{tr_label('Recommendation', lang)}**")
+        _render_structured_recommendation(row["recommendation"], lang)
 
         st.markdown("---")
-        _render_delete_control(row_id, delete_analysis, key_prefix="_hist_health", label="crop health analysis")
+        _render_delete_control(row_id, delete_analysis, key_prefix="_hist_health", label="crop health analysis", lang=lang)
 
 
-def _render_structured_recommendation(raw: str | None) -> None:
+def _render_structured_recommendation(raw: str | None, lang: str) -> None:
     """Recommendation is stored as JSON from src.recommendation_engine when
     saved from the Crop Health Analysis page; render it structured if so,
     otherwise fall back to showing the raw text as-is."""
     if not raw:
-        st.caption("No recommendation recorded.")
+        st.caption(tr_label("No recommendation recorded.", lang))
         return
     try:
         parsed = json.loads(raw)
@@ -321,12 +356,14 @@ def _render_structured_recommendation(raw: str | None) -> None:
     for rec in parsed.get("recommendations", []):
         icon_tag = icon_html(CATEGORY_ICON.get(rec.get("category"), "leaf"), size=18, margin_right="0")
         badge_color = PRIORITY_COLOR.get(rec.get("priority"), "#7FA687")
+        category_label = tr_label(rec.get("category", ""), lang).title()
+        priority_label = tr_label(rec.get("priority", ""), lang).upper()
         items += (
             "<div class='rec-item'>"
             f"<div class='rec-icon'>{icon_tag}</div>"
             "<div>"
-            f"<div class='rec-title'>{rec.get('category','').title()} · "
-            f"<span style='color:{badge_color}'>{rec.get('priority','').upper()}</span></div>"
+            f"<div class='rec-title'>{category_label} · "
+            f"<span style='color:{badge_color}'>{priority_label}</span></div>"
             f"<div class='rec-text'>{rec.get('text','')}</div>"
             "</div></div>"
         )
@@ -336,35 +373,48 @@ def _render_structured_recommendation(raw: str | None) -> None:
 # ---------------------------------------------------------------------------
 # Tab 2 — Disease Detection
 # ---------------------------------------------------------------------------
-def _render_disease_tab() -> None:
-    rows = _load_rows(get_disease_analyses, "disease detection")
+def _render_disease_tab(lang: str) -> None:
+    rows = _load_rows(get_disease_analyses, "disease detection", lang)
     if rows is None:
         return
 
     if not rows:
         callout(
-            f"{icon_html('history', size=18)}No disease detection analyses saved yet. Go to "
-            "<b>Disease Detection</b>, analyze a leaf image, and click "
-            "<b>Save Analysis</b> to see records here."
+            f"{icon_html('history', size=18)}"
+            + tr_label(
+                "No disease detection analyses saved yet. Go to "
+                "<b>Disease Detection</b>, analyze a leaf image, and click "
+                "<b>Save Analysis</b> to see records here.",
+                lang,
+            )
         )
         return
 
     df = _disease_to_dataframe(rows)
 
-    st.markdown("#### Filters & sorting")
+    st.markdown(f"#### {tr_label('Filters & sorting', lang)}")
     f1, f2, f3, f4 = st.columns([1.2, 1.2, 1.4, 1.2])
     with f1:
         crop_options = ["All"] + sorted(df["crop"].unique())
-        crop_filter = st.multiselect("Crop", crop_options, default=["All"], key="_hist_disease_crop")
+        crop_filter = st.multiselect(
+            tr_label("Crop", lang), crop_options, default=["All"], key="_hist_disease_crop",
+            format_func=lambda c: tr_label(c, lang) if c == "All" else tr_crop(c, lang),
+        )
     with f2:
         disease_options = ["All"] + sorted(df["disease"].dropna().unique())
-        disease_filter = st.multiselect("Disease", disease_options, default=["All"], key="_hist_disease_disease")
+        disease_filter = st.multiselect(
+            tr_label("Disease", lang), disease_options, default=["All"], key="_hist_disease_disease",
+            format_func=lambda d: tr_label(d, lang) if d in ("All", "Unknown") else tr_disease(d, lang),
+        )
     with f3:
         min_date, max_date = df["_dt"].min().date(), df["_dt"].max().date()
-        date_range = st.date_input("Date range", value=(min_date, max_date),
+        date_range = st.date_input(tr_label("Date range", lang), value=(min_date, max_date),
                                    min_value=min_date, max_value=max_date, key="_hist_disease_dates")
     with f4:
-        sort_choice = st.selectbox("Sort by", list(DISEASE_SORT_OPTIONS.keys()), key="_hist_disease_sort")
+        sort_choice = st.selectbox(
+            tr_label("Sort by", lang), list(DISEASE_SORT_OPTIONS.keys()), key="_hist_disease_sort",
+            format_func=lambda o: tr_label(o, lang),
+        )
 
     crop_matches = "All" in crop_filter or df["crop"].isin(crop_filter)
     disease_matches = "All" in disease_filter or df["disease"].isin(disease_filter)
@@ -376,28 +426,35 @@ def _render_disease_tab() -> None:
     sort_col, ascending = DISEASE_SORT_OPTIONS[sort_choice]
     view = df[mask].sort_values(sort_col, ascending=ascending)
 
-    st.markdown(f"#### {len(view)} analyses")
+    st.markdown(f"#### {len(view)} {tr_label('analyses', lang)}")
     if len(view) == 0:
-        callout("No analyses match the current filters.")
+        callout(tr_label("No analyses match the current filters.", lang))
         return
 
+    display = view.copy()
+    display["crop"] = display["crop"].apply(lambda c: tr_crop(c, lang))
+    display["disease"] = display["disease"].apply(lambda d: tr_label(d, lang) if d == "Unknown" else tr_disease(d, lang))
+    display["severity"] = display["severity"].apply(lambda s: tr_severity(s, lang) if s else s)
+    display["health_label"] = display["health_label"].apply(lambda h: tr_label(h, lang))
+
     st.dataframe(
-        view[["id", "date", "crop", "disease", "confidence", "severity",
-              "health_label", "recommendation_summary"]],
+        display[["id", "date", "crop", "disease", "confidence", "severity",
+                 "health_label", "recommendation_summary"]],
         use_container_width=True,
         column_config={
-            "id": "ID", "date": "Date", "crop": "Crop", "disease": "Disease",
-            "confidence": st.column_config.NumberColumn("Confidence", format="%.0f%%"),
-            "severity": "Severity", "health_label": "Result",
-            "recommendation_summary": "Recommendation",
+            "id": tr_label("ID", lang), "date": tr_label("Date", lang), "crop": tr_label("Crop", lang),
+            "disease": tr_label("Disease", lang),
+            "confidence": st.column_config.NumberColumn(tr_label("Confidence", lang), format="%.0f%%"),
+            "severity": tr_label("Severity", lang), "health_label": tr_label("Result", lang),
+            "recommendation_summary": tr_label("Recommendation", lang),
         },
         hide_index=True,
     )
 
-    st.markdown("#### Records")
-    st.caption("Expand a record to view the analyzed image and full details, or delete it.")
+    st.markdown(f"#### {tr_label('Records', lang)}")
+    st.caption(tr_label("Expand a record to view the analyzed image and full details, or delete it.", lang))
     for _, row in view.iterrows():
-        _render_disease_record(row)
+        _render_disease_record(row, lang)
 
 
 def _disease_to_dataframe(rows: list[dict]) -> pd.DataFrame:
@@ -417,77 +474,90 @@ def _disease_to_dataframe(rows: list[dict]) -> pd.DataFrame:
     return df
 
 
-def _render_disease_record(row: pd.Series) -> None:
+def _render_disease_record(row: pd.Series, lang: str) -> None:
     row_id = int(row["id"])
-    label = f"#{row_id} · {row['crop']} · {row['disease']} · {row['date']}"
+    label = f"#{row_id} · {tr_crop(row['crop'], lang)} · {tr_disease(row['disease'], lang)} · {row['date']}"
 
     with st.expander(label):
         img_col, info_col = st.columns([1, 2])
         with img_col:
             image_path = row.get("image_path")
             if image_path and isinstance(image_path, str) and os.path.exists(image_path):
-                st.image(image_path, caption="Analyzed leaf", use_container_width=True)
+                st.image(image_path, caption=tr_label("Analyzed leaf", lang), use_container_width=True)
             else:
-                st.caption("Image not available (file may have been moved or removed).")
+                st.caption(tr_label("Image not available (file may have been moved or removed).", lang))
 
         with info_col:
             c1, c2 = st.columns(2)
             with c1:
-                _history_metric("Crop", row["crop"])
+                _history_metric(tr_label("Crop", lang), tr_crop(row["crop"], lang))
             with c2:
-                _history_metric("Result", row["health_label"])
+                _history_metric(tr_label("Result", lang), tr_label(row["health_label"], lang))
 
             c3, c4 = st.columns(2)
             with c3:
-                _history_metric("Disease", row["disease"] or "—")
+                _history_metric(tr_label("Disease", lang), tr_disease(row["disease"], lang) if row["disease"] else "—")
             with c4:
-                _history_metric("Confidence", f"{row['confidence']:.0f}%" if pd.notna(row["confidence"]) else "—")
+                _history_metric(tr_label("Confidence", lang), f"{row['confidence']:.0f}%" if pd.notna(row["confidence"]) else "—")
 
             c5, c6 = st.columns(2)
             with c5:
-                _history_metric("Severity", row["severity"] or "—")
+                _history_metric(tr_label("Severity", lang), tr_severity(row["severity"], lang) if row["severity"] else "—")
             with c6:
-                _history_metric("Date", row["date"])
+                _history_metric(tr_label("Date", lang), row["date"])
 
-        st.markdown("**Recommendation**")
-        st.markdown(row["recommendation"] or "_No recommendation recorded._")
+        st.markdown(f"**{tr_label('Recommendation', lang)}**")
+        st.markdown(row["recommendation"] or f"_{tr_label('No recommendation recorded.', lang)}_")
 
         st.markdown("---")
-        _render_delete_control(row_id, delete_disease_analysis, key_prefix="_hist_disease", label="disease analysis")
+        _render_delete_control(row_id, delete_disease_analysis, key_prefix="_hist_disease", label="disease analysis", lang=lang)
 
 
 # ---------------------------------------------------------------------------
 # Tab 3 — Environmental
 # ---------------------------------------------------------------------------
-def _render_env_tab() -> None:
-    rows = _load_rows(get_environment_analyses, "environmental analysis")
+def _render_env_tab(lang: str) -> None:
+    rows = _load_rows(get_environment_analyses, "environmental analysis", lang)
     if rows is None:
         return
 
     if not rows:
         callout(
-            f"{icon_html('history', size=18)}No environmental analyses saved yet. Go to "
-            "<b>Environmental Analysis</b>, assess a reading, and click "
-            "<b>Save Analysis</b> to see records here."
+            f"{icon_html('history', size=18)}"
+            + tr_label(
+                "No environmental analyses saved yet. Go to "
+                "<b>Environmental Analysis</b>, assess a reading, and click "
+                "<b>Save Analysis</b> to see records here.",
+                lang,
+            )
         )
         return
 
     df = _env_to_dataframe(rows)
 
-    st.markdown("#### Filters & sorting")
+    st.markdown(f"#### {tr_label('Filters & sorting', lang)}")
     f1, f2, f3, f4 = st.columns([1.2, 1.2, 1.4, 1.2])
     with f1:
         crop_options = ["All"] + sorted(df["crop"].unique())
-        crop_filter = st.multiselect("Crop", crop_options, default=["All"], key="_hist_env_crop")
+        crop_filter = st.multiselect(
+            tr_label("Crop", lang), crop_options, default=["All"], key="_hist_env_crop",
+            format_func=lambda c: tr_label(c, lang) if c == "All" else tr_crop(c, lang),
+        )
     with f2:
         risk_options = ["All"] + sorted(df["risk_level"].dropna().unique())
-        risk_filter = st.multiselect("Risk level", risk_options, default=["All"], key="_hist_env_risk")
+        risk_filter = st.multiselect(
+            tr_label("Risk level", lang), risk_options, default=["All"], key="_hist_env_risk",
+            format_func=lambda r: tr_label(r, lang),
+        )
     with f3:
         min_date, max_date = df["_dt"].min().date(), df["_dt"].max().date()
-        date_range = st.date_input("Date range", value=(min_date, max_date),
+        date_range = st.date_input(tr_label("Date range", lang), value=(min_date, max_date),
                                    min_value=min_date, max_value=max_date, key="_hist_env_dates")
     with f4:
-        sort_choice = st.selectbox("Sort by", list(ENV_SORT_OPTIONS.keys()), key="_hist_env_sort")
+        sort_choice = st.selectbox(
+            tr_label("Sort by", lang), list(ENV_SORT_OPTIONS.keys()), key="_hist_env_sort",
+            format_func=lambda o: tr_label(o, lang),
+        )
 
     crop_matches = "All" in crop_filter or df["crop"].isin(crop_filter)
     risk_matches = "All" in risk_filter or df["risk_level"].isin(risk_filter)
@@ -499,33 +569,37 @@ def _render_env_tab() -> None:
     sort_col, ascending = ENV_SORT_OPTIONS[sort_choice]
     view = df[mask].sort_values(sort_col, ascending=ascending)
 
-    st.markdown(f"#### {len(view)} analyses")
+    st.markdown(f"#### {len(view)} {tr_label('analyses', lang)}")
     if len(view) == 0:
-        callout("No analyses match the current filters.")
+        callout(tr_label("No analyses match the current filters.", lang))
         return
 
+    display = view.copy()
+    display["crop"] = display["crop"].apply(lambda c: tr_crop(c, lang))
+    display["risk_level"] = display["risk_level"].apply(lambda r: tr_label(r, lang))
+
     st.dataframe(
-        view[["id", "date", "crop", "temperature", "humidity", "soil_moisture",
-              "rainfall", "risk_level", "health_score", "recommendation_summary"]],
+        display[["id", "date", "crop", "temperature", "humidity", "soil_moisture",
+                 "rainfall", "risk_level", "health_score", "recommendation_summary"]],
         use_container_width=True,
         column_config={
-            "id": "ID", "date": "Date", "crop": "Crop",
-            "temperature": st.column_config.NumberColumn("Temp (°C)", format="%.1f"),
-            "humidity": st.column_config.NumberColumn("Humidity (%)", format="%.1f"),
-            "soil_moisture": st.column_config.NumberColumn("Soil moist. (%)", format="%.1f"),
-            "rainfall": st.column_config.NumberColumn("Rainfall (mm)", format="%.1f"),
-            "risk_level": "Risk level",
+            "id": tr_label("ID", lang), "date": tr_label("Date", lang), "crop": tr_label("Crop", lang),
+            "temperature": st.column_config.NumberColumn(tr_label("Temp (°C)", lang), format="%.1f"),
+            "humidity": st.column_config.NumberColumn(tr_label("Humidity (%)", lang), format="%.1f"),
+            "soil_moisture": st.column_config.NumberColumn(tr_label("Soil moist. (%)", lang), format="%.1f"),
+            "rainfall": st.column_config.NumberColumn(tr_label("Rainfall (mm)", lang), format="%.1f"),
+            "risk_level": tr_label("Risk level", lang),
             "health_score": st.column_config.ProgressColumn(
-                "Health score", min_value=0, max_value=100, format="%d"),
-            "recommendation_summary": "Recommendation",
+                tr_label("Health score", lang), min_value=0, max_value=100, format="%d"),
+            "recommendation_summary": tr_label("Recommendation", lang),
         },
         hide_index=True,
     )
 
-    st.markdown("#### Records")
-    st.caption("Expand a record to view full details or delete it.")
+    st.markdown(f"#### {tr_label('Records', lang)}")
+    st.caption(tr_label("Expand a record to view full details or delete it.", lang))
     for _, row in view.iterrows():
-        _render_env_record(row)
+        _render_env_record(row, lang)
 
 
 def _env_to_dataframe(rows: list[dict]) -> pd.DataFrame:
@@ -544,44 +618,44 @@ def _env_to_dataframe(rows: list[dict]) -> pd.DataFrame:
     return df
 
 
-def _render_env_record(row: pd.Series) -> None:
+def _render_env_record(row: pd.Series, lang: str) -> None:
     row_id = int(row["id"])
-    label = f"#{row_id} · {row['crop']} · {row['risk_level']} · {row['date']}"
+    label = f"#{row_id} · {tr_crop(row['crop'], lang)} · {tr_label(row['risk_level'], lang)} · {row['date']}"
     risk_color = RISK_LEVELS.get(row["risk_level"], ("Unknown", "#93998A", 0.5))[1]
 
     with st.expander(label):
         c1, c2 = st.columns(2)
         with c1:
-            _history_metric("Crop", row["crop"])
+            _history_metric(tr_label("Crop", lang), tr_crop(row["crop"], lang))
         with c2:
             st.markdown(
                 f"<div class='metric-tile history-metric'>"
-                f"<div class='label'>Risk level</div>"
-                f"<div class='value' style='color:{risk_color}'>{escape(str(row['risk_level']))}</div>"
+                f"<div class='label'>{tr_label('Risk level', lang)}</div>"
+                f"<div class='value' style='color:{risk_color}'>{escape(str(tr_label(row['risk_level'], lang)))}</div>"
                 "</div>",
                 unsafe_allow_html=True,
             )
 
         c3, c4 = st.columns(2)
         with c3:
-            _history_metric("Health score", int(row["health_score"]))
+            _history_metric(tr_label("Health score", lang), int(row["health_score"]))
         with c4:
-            _history_metric("Model confidence", f"{row['probability']:.0f}%" if pd.notna(row["probability"]) else "—")
+            _history_metric(tr_label("Model confidence", lang), f"{row['probability']:.0f}%" if pd.notna(row["probability"]) else "—")
 
         e1, e2, e3, e4 = st.columns(4)
         with e1:
-            _history_metric("Temperature", f"{row['temperature']} °C" if pd.notna(row["temperature"]) else "—")
+            _history_metric(tr_label("Temperature", lang), f"{row['temperature']} °C" if pd.notna(row["temperature"]) else "—")
         with e2:
-            _history_metric("Humidity", f"{row['humidity']} %" if pd.notna(row["humidity"]) else "—")
+            _history_metric(tr_label("Humidity", lang), f"{row['humidity']} %" if pd.notna(row["humidity"]) else "—")
         with e3:
-            _history_metric("Soil moisture", f"{row['soil_moisture']} %" if pd.notna(row["soil_moisture"]) else "—")
+            _history_metric(tr_label("Soil moisture", lang), f"{row['soil_moisture']} %" if pd.notna(row["soil_moisture"]) else "—")
         with e4:
-            _history_metric("Rainfall", f"{row['rainfall']} mm" if pd.notna(row["rainfall"]) else "—")
+            _history_metric(tr_label("Rainfall", lang), f"{row['rainfall']} mm" if pd.notna(row["rainfall"]) else "—")
 
-        _history_metric("Date", row["date"])
+        _history_metric(tr_label("Date", lang), row["date"])
 
-        st.markdown("**Recommendation**")
-        st.markdown(row["recommendation"] or "_No recommendation recorded._")
+        st.markdown(f"**{tr_label('Recommendation', lang)}**")
+        st.markdown(row["recommendation"] or f"_{tr_label('No recommendation recorded.', lang)}_")
 
         st.markdown("---")
-        _render_delete_control(row_id, delete_environment_analysis, key_prefix="_hist_env", label="environmental analysis")
+        _render_delete_control(row_id, delete_environment_analysis, key_prefix="_hist_env", label="environmental analysis", lang=lang)
