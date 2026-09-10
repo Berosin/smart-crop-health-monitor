@@ -56,13 +56,14 @@ MAX_PROB_THRESHOLD = 0.45
 NORMALIZED_ENTROPY_THRESHOLD = 0.75
 
 
-def compute_ood_signal(probs: np.ndarray) -> dict:
+def compute_ood_signal(probs: np.ndarray, lang: str = "en") -> dict:
     """Uncertainty signal for one softmax output vector.
 
     Args:
         probs: 1D array of per-class probabilities for one prediction
             (e.g. model.predict(batch)[0]). Assumed to already sum to ~1
             (a softmax output) — this function does not renormalize.
+        lang: UI language for the "reason" string (see src/i18n.py).
 
     Returns:
         {
@@ -73,6 +74,8 @@ def compute_ood_signal(probs: np.ndarray) -> dict:
             "reason": str,                    # which signal(s), in plain language
         }
     """
+    from src.i18n import tr_template
+
     probs = np.asarray(probs, dtype=np.float64)
     num_classes = len(probs)
 
@@ -90,24 +93,27 @@ def compute_ood_signal(probs: np.ndarray) -> dict:
     is_likely_ood = low_confidence or flat_distribution
 
     if low_confidence and flat_distribution:
-        reason = (
-            f"Top match is only {max_prob * 100:.0f}% confident, and the model's "
-            f"confidence is spread fairly evenly across all classes — signs this "
-            f"may not be a clear photo of a leaf this model was trained on."
+        reason = tr_template(
+            "Top match is only {pct:.0f}% confident, and the model's "
+            "confidence is spread fairly evenly across all classes — signs this "
+            "may not be a clear photo of a leaf this model was trained on.",
+            lang, pct=max_prob * 100,
         )
     elif low_confidence:
-        reason = (
-            f"Top match is only {max_prob * 100:.0f}% confident — lower than "
-            f"expected for a clear, in-distribution photo."
+        reason = tr_template(
+            "Top match is only {pct:.0f}% confident — lower than "
+            "expected for a clear, in-distribution photo.",
+            lang, pct=max_prob * 100,
         )
     elif flat_distribution:
-        reason = (
+        reason = tr_template(
             "The model's confidence is spread fairly evenly across all "
             "possible classes rather than settling on one — a sign of "
-            "genuine uncertainty, even though one class scored highest."
+            "genuine uncertainty, even though one class scored highest.",
+            lang,
         )
     else:
-        reason = f"Top match is {max_prob * 100:.0f}% confident, with a clear peak."
+        reason = tr_template("Top match is {pct:.0f}% confident, with a clear peak.", lang, pct=max_prob * 100)
 
     return {
         "max_prob": max_prob,

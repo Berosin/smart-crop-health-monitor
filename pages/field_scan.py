@@ -232,7 +232,7 @@ def _run_field_scan(model, class_names, uploaded_files, crop, threshold, denoise
         if stats is not None:
             with st.spinner("Checking image plausibility…"):
                 feature_ood_signals = compute_feature_ood_signals_batch(
-                    model, stacked, predicted_diseases, stats,
+                    model, stacked, predicted_diseases, stats, lang=get_language(),
                 )
 
         for meta, row, feature_ood in zip(thumbs_and_names, preds, feature_ood_signals):
@@ -251,7 +251,7 @@ def _run_field_scan(model, class_names, uploaded_files, crop, threshold, denoise
             # comes essentially free here too. Combined with the
             # feature-space check above (when available) the same way
             # pages/disease.py combines them.
-            ood_signal = compute_ood_signal(row)
+            ood_signal = compute_ood_signal(row, lang=get_language())
             is_ood = ood_signal["is_likely_ood"] or bool(feature_ood and feature_ood["is_likely_ood"])
             leaves.append({
                 "name": meta["name"],

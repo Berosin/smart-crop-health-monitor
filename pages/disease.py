@@ -22,7 +22,7 @@ from src.errors import PredictionError, GradCAMError, logger, safe_action
 from src.gradcam import generate_gradcam, overlay_heatmap
 from src.image_preprocessing import preprocess_leaf_image, ImageValidationError
 from src.ood_detection import compute_ood_signal
-from src.i18n import get_language, tr_crop, tr_disease, tr_severity, tr_severity_action, tr_recommendation, tr_label
+from src.i18n import get_language, tr_crop, tr_disease, tr_severity, tr_severity_action, tr_recommendation, tr_label, tr_template
 from src.ood_feature_detector import load_stats as load_embedding_stats, compute_feature_ood_signal
 from src.yield_loss import get_yield_loss_range, estimate_yield_loss, REFERENCE_YIELD_T_PER_HA, HECTARES_PER_ACRE
 from utils.ui import (
@@ -144,7 +144,7 @@ def preprocess_image(uploaded_file, target_size=IMAGE_SIZE,
     )
 
 
-def predict_disease(model, class_names, image_batch, confidence_threshold=CONFIDENCE_THRESHOLD, crop=None):
+def predict_disease(model, class_names, image_batch, confidence_threshold=CONFIDENCE_THRESHOLD, crop=None, lang="en"):
     """Run inference and return prediction dict."""
     try:
         # Run inference
@@ -186,12 +186,12 @@ def predict_disease(model, class_names, image_batch, confidence_threshold=CONFID
         #    class). Skipped entirely for a crop that hasn't had
         #    colab/export_embedding_stats.py run for it yet — falls back
         #    to softmax-only detection for that crop, same as before.
-        ood_signal = compute_ood_signal(preds)
+        ood_signal = compute_ood_signal(preds, lang=lang)
         feature_ood_signal = None
         if crop:
             stats = load_embedding_stats(crop, get_model_dir(crop))
             if stats is not None:
-                feature_ood_signal = compute_feature_ood_signal(model, image_batch, disease, stats)
+                feature_ood_signal = compute_feature_ood_signal(model, image_batch, disease, stats, lang=lang)
 
         is_ood = ood_signal["is_likely_ood"] or bool(feature_ood_signal and feature_ood_signal["is_likely_ood"])
         ood_reasons = [ood_signal["reason"]] if ood_signal["is_likely_ood"] else []
@@ -225,42 +225,53 @@ def predict_disease(model, class_names, image_batch, confidence_threshold=CONFID
 # Page
 # ---------------------------------------------------------------------------
 def render() -> None:
+    lang = get_language()
     page_header(
         "disease",
-        "Disease Detection",
-        "Upload a crop leaf image to detect diseases with AI.",
+        tr_label("Disease Detection", lang),
+        tr_label("Upload a crop leaf image to detect diseases with AI.", lang),
     )
 
     trained_crops = get_trained_crops()
 
     if not trained_crops:
+        no_model_msg = tr_label(
+            "If a model file exists but still won't load, check the server logs for details.", lang
+        )
         callout(
-            f"{icon_html('warning', size=18)}<b>No trained model found.</b> Train one first using "
+            f"{icon_html('warning', size=18)}<b>{tr_label('No trained model found.', lang)}</b> "
+            f"{tr_label('Train one first using', lang)} "
             "<code>python -m src.model_training --data-dir data/samples --crop Tomato</code> "
-            "(swap <code>--crop</code> for any crop in <code>config.DISEASE_MODELS</code>). "
-            "If a model file exists but still won't load, check the server logs for details."
+            f"{tr_label('(swap', lang)} <code>--crop</code> {tr_label('for any crop in', lang)} "
+            f"<code>config.DISEASE_MODELS</code>). "
+            f"{no_model_msg}"
         )
         footer()
         return
 
     default_index = trained_crops.index(DEFAULT_DISEASE_CROP) if DEFAULT_DISEASE_CROP in trained_crops else 0
-    crop = st.selectbox("Crop", trained_crops, index=default_index)
+    crop = st.selectbox(tr_label("Crop", lang), trained_crops, index=default_index, format_func=lambda c: tr_crop(c, lang))
 
     # Load model for the selected crop
     model, class_names = load_model(crop)
 
     if model is None:
         callout(
-            f"{icon_html('warning', size=18)}<b>Model unavailable.</b> "
-            f"{crop}'s model file couldn't be loaded even though it's listed as trained — "
-            "check the server logs for details."
+            f"{icon_html('warning', size=18)}<b>{tr_label('Model unavailable.', lang)}</b> "
+            + tr_template(
+                "{crop}'s model file couldn't be loaded even though it's listed as "
+                "trained — check the server logs for details.",
+                lang, crop=tr_crop(crop, lang),
+            )
         )
         footer()
         return
 
+    class_names_label = ", ".join(tr_disease(n, lang) for n in class_names)
     callout(
-        f"{icon_html('success', size=18)}<b>Model loaded</b> — {crop} ({model.name}) with "
-        f"{len(class_names)} classes: {', '.join(class_names)}"
+        f"{icon_html('success', size=18)}<b>{tr_label('Model loaded', lang)}</b> — {tr_crop(crop, lang)} ({model.name}) "
+        + tr_template("with {n} classes:", lang, n=len(class_names))
+        + f" {class_names_label}"
     )
 
     if st.session_state.get("_disease_crop") != crop:
@@ -273,43 +284,49 @@ def render() -> None:
 
     # ------------------------------------------------------------------ inputs
     with col_input:
-        st.markdown("#### 1 · Upload leaf image")
+        st.markdown(f"#### {tr_label('1 · Upload leaf image', lang)}")
 
         uploaded = st.file_uploader(
-            "Leaf image (JPG / PNG)",
+            tr_label("Leaf image (JPG / PNG)", lang),
             type=["jpg", "jpeg", "png"],
             label_visibility="collapsed",
         )
 
         if uploaded is not None:
-            st.image(uploaded, caption="Uploaded leaf", use_container_width=True)
+            st.image(uploaded, caption=tr_label("Uploaded leaf", lang), use_container_width=True)
         else:
-            st.info("Drop a clear, well-lit photo of a single leaf here.")
+            st.info(tr_label("Drop a clear, well-lit photo of a single leaf here.", lang))
 
-        with st.expander("Advanced options"):
+        with st.expander(tr_label("Advanced options", lang)):
             threshold = st.slider(
-                "Confidence threshold",
+                tr_label("Confidence threshold", lang),
                 0.0, 1.0,
                 float(CONFIDENCE_THRESHOLD), 0.05,
-                help="Predictions below this confidence are flagged as uncertain.",
+                help=tr_label("Predictions below this confidence are flagged as uncertain.", lang),
             )
-            st.markdown("**Preprocessing**")
+            st.markdown(f"**{tr_label('Preprocessing', lang)}**")
             denoise = st.checkbox(
-                "Noise reduction",
+                tr_label("Noise reduction", lang),
                 value=False,
-                help="Apply OpenCV non-local-means denoising before inference. "
-                     "Useful for grainy or low-light photos.",
+                help=tr_label(
+                    "Apply OpenCV non-local-means denoising before inference. "
+                    "Useful for grainy or low-light photos.",
+                    lang,
+                ),
             )
             remove_background = st.checkbox(
-                "Background handling",
+                tr_label("Background handling", lang),
                 value=False,
-                help="Softly flatten non-leaf-colored background toward neutral "
-                     "gray so the model focuses on the leaf. Useful for busy "
-                     "backgrounds; skip for close-up leaf-only photos.",
+                help=tr_label(
+                    "Softly flatten non-leaf-colored background toward neutral "
+                    "gray so the model focuses on the leaf. Useful for busy "
+                    "backgrounds; skip for close-up leaf-only photos.",
+                    lang,
+                ),
             )
 
         analyze = st.button(
-            "Analyze", type="primary", use_container_width=True,
+            tr_label("Analyze", lang), type="primary", use_container_width=True,
             disabled=(uploaded is None),
         )
 
@@ -320,7 +337,7 @@ def render() -> None:
 
     # ----------------------------------------------------------------- results
     with col_result:
-        st.markdown("#### 2 · Prediction result")
+        st.markdown(f"#### {tr_label('2 · Prediction result', lang)}")
 
         # Session state holds the last prediction
         pred = st.session_state.get("_disease_pred")
@@ -328,20 +345,20 @@ def render() -> None:
         if analyze and uploaded is not None:
             try:
                 # Preprocess with loading indicator
-                with st.spinner("Preprocessing image…"):
+                with st.spinner(tr_label("Preprocessing image…", lang)):
                     image_batch = preprocess_image(
                         uploaded, denoise=denoise, remove_background=remove_background,
                     )
 
                 # Run inference with loading indicator
-                with st.spinner("Running disease detection…"):
-                    pred = predict_disease(model, class_names, image_batch, threshold, crop=crop)
+                with st.spinner(tr_label("Running disease detection…", lang)):
+                    pred = predict_disease(model, class_names, image_batch, threshold, crop=crop, lang=lang)
 
                 # Explainability: Grad-CAM heatmap over the same image batch
                 # that was just classified, explaining the top prediction.
                 # A failure here must never hide the (already successful)
                 # prediction above — degrade to no heatmap instead.
-                with st.spinner("Computing explainability heatmap…"):
+                with st.spinner(tr_label("Computing explainability heatmap…", lang)):
                     try:
                         pred_idx = class_names.index(pred["disease"])
                         gradcam = generate_gradcam(model, image_batch, pred_index=pred_idx)
@@ -356,9 +373,10 @@ def render() -> None:
                         logger.exception("Unexpected error during Grad-CAM generation")
                         pred["gradcam_heatmap"] = None
                         pred["gradcam_base_image"] = None
-                        pred["gradcam_error"] = (
+                        pred["gradcam_error"] = tr_label(
                             "Couldn't generate the explainability heatmap for "
-                            "this prediction."
+                            "this prediction.",
+                            lang,
                         )
 
                 # Stash what's needed to save this analysis later: the crop,
@@ -383,15 +401,21 @@ def render() -> None:
             except Exception:
                 logger.exception("Unexpected error during disease analysis")
                 st.error(
-                    "Analyzing this image failed unexpectedly. Please try "
-                    "again. If the problem continues, contact the app maintainer."
+                    tr_label(
+                        "Analyzing this image failed unexpectedly. Please try "
+                        "again. If the problem continues, contact the app maintainer.",
+                        lang,
+                    )
                 )
 
         if pred is None:
             card(
-                "Awaiting analysis",
-                "Upload an image and click **Analyze** to see the prediction, "
-                "confidence, severity, and recommendation.",
+                tr_label("Awaiting analysis", lang),
+                tr_label(
+                    "Upload an image and click **Analyze** to see the prediction, "
+                    "confidence, severity, and recommendation.",
+                    lang,
+                ),
             )
         else:
             _render_result(pred)
@@ -400,7 +424,7 @@ def render() -> None:
 # ---------------------------------------------------------------------------
 # Result rendering
 # ---------------------------------------------------------------------------
-def _render_ood_warning(ood_reasons: list[str]) -> None:
+def _render_ood_warning(ood_reasons: list[str], lang: str) -> None:
     """"Is this even a leaf?" banner — shown when either uncertainty check
     fires: softmax-based (src/ood_detection.py, catches the model being
     *unsure*) and/or feature-space (src/ood_feature_detector.py, catches
@@ -416,12 +440,10 @@ def _render_ood_warning(ood_reasons: list[str]) -> None:
         <div style="background:#FBEFED;border-left:5px solid #B5564B;
                     border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem">
           <div style="font-size:1.05rem;font-weight:700;color:#7C3730">
-            {icon_html('warning', size=20, margin_right='.4em')}This doesn't look like a confident leaf match
+            {icon_html('warning', size=20, margin_right='.4em')}{tr_label("This doesn't look like a confident leaf match", lang)}
           </div>
           <div style="font-size:.85rem;color:#5B6353;margin-top:.35rem">
-            {reasons_html} Try a clearer, closer photo of a single leaf
-            against a plain background — the result below is shown for
-            reference, but treat it as unreliable.
+            {reasons_html} {tr_label('Try a clearer, closer photo of a single leaf against a plain background — the result below is shown for reference, but treat it as unreliable.', lang)}
           </div>
         </div>
         """,
@@ -435,7 +457,7 @@ def _render_result(pred: dict) -> None:
     lang = get_language()
 
     if is_ood:
-        _render_ood_warning(pred.get("ood_reasons") or [])
+        _render_ood_warning(pred.get("ood_reasons") or [], lang)
 
     # Banner
     sev_color, sev_action_en = SEVERITY_META.get(pred["severity"], ("#93998A", "Unknown"))
@@ -477,9 +499,13 @@ def _render_result(pred: dict) -> None:
     # Low-confidence warning
     if pred["low_confidence"] and not pred["is_healthy"]:
         callout(
-            f"{icon_html('warning', size=18)}Confidence is below the threshold. "
-            "The result may be uncertain — consider retaking the photo with "
-            "better lighting/focus."
+            f"{icon_html('warning', size=18)}"
+            + tr_label(
+                "Confidence is below the threshold. "
+                "The result may be uncertain — consider retaking the photo with "
+                "better lighting/focus.",
+                lang,
+            )
         )
 
     # Confidence breakdown bar chart
@@ -497,20 +523,20 @@ def _render_result(pred: dict) -> None:
         x=pred["threshold"] * 100,
         line_dash="dash",
         line_color="#7C8571",
-        annotation_text="threshold",
+        annotation_text=tr_label("threshold", lang),
         annotation_position="top right"
     )
     fig.update_layout(
         **CHART_THEME,
         margin=dict(t=10, b=10),
-        xaxis_title="Confidence (%)",
+        xaxis_title=tr_label("Confidence (%)", lang),
         height=max(220, len(bd) * 42),
         showlegend=False,
     )
     st.plotly_chart(fig, use_container_width=True)
 
     # Explainability — Grad-CAM
-    _render_gradcam(pred)
+    _render_gradcam(pred, lang)
 
     # Recommendation
     st.markdown(f"#### {tr_label('Recommendation', lang)}")
@@ -530,13 +556,13 @@ def _render_result(pred: dict) -> None:
 
     # PDF report export
     st.markdown("---")
-    _render_pdf_download(pred)
+    _render_pdf_download(pred, lang)
 
     # Save to database
     st.markdown("---")
-    _render_save_section(pred)
+    _render_save_section(pred, lang)
 
-    if st.button("Re-run", use_container_width=True):
+    if st.button(tr_label("Re-run", lang), use_container_width=True):
         st.session_state["_disease_pred"] = None
         st.session_state.pop("_disease_saved_token", None)
         st.session_state.pop("_disease_saved_id", None)
@@ -546,7 +572,7 @@ def _render_result(pred: dict) -> None:
 # ---------------------------------------------------------------------------
 # PDF report export
 # ---------------------------------------------------------------------------
-def _render_pdf_download(pred: dict) -> None:
+def _render_pdf_download(pred: dict, lang: str) -> None:
     """A downloadable, farmer-shareable PDF for this one result.
 
     Reuses whatever the yield-loss calculator above is currently set to
@@ -572,12 +598,12 @@ def _render_pdf_download(pred: dict) -> None:
         pdf_bytes = generate_disease_report_pdf(pred, yield_loss_estimate=yield_loss_estimate)
     except Exception:
         logger.exception("Unexpected error generating PDF report")
-        st.error("Couldn't generate the PDF report right now. Please try again.")
+        st.error(tr_label("Couldn't generate the PDF report right now. Please try again.", lang))
         return
 
     file_name = f"crop_diagnosis_{pred['_crop'].lower()}_{pred['disease'].lower()}_{int(time.time())}.pdf"
     st.download_button(
-        "Download PDF Report",
+        tr_label("Download PDF Report", lang),
         data=pdf_bytes,
         file_name=file_name,
         mime="application/pdf",
@@ -596,38 +622,49 @@ def _render_pdf_download(pred: dict) -> None:
 # this function is presentation only.
 # ---------------------------------------------------------------------------
 def render_yield_loss_estimator(crop: str, disease: str, severity: str, key_prefix: str) -> None:
+    lang = get_language()
     if disease == "Healthy":
         return  # nothing to estimate
     if get_yield_loss_range(disease, severity) is None:
         return  # this disease/severity isn't in the published-data table
 
-    st.markdown("#### Estimated yield loss if untreated")
+    st.markdown(f"#### {tr_label('Estimated yield loss if untreated', lang)}")
     st.caption(
-        f"Based on published agricultural research for {pretty_name(disease)} at "
-        f"{severity.lower()} severity. Adjust the figures below to your own field."
+        tr_template(
+            "Based on published agricultural research for {disease} at "
+            "{severity} severity. Adjust the figures below to your own field.",
+            lang, disease=tr_disease(disease, lang), severity=tr_severity(severity, lang).lower(),
+        )
     )
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        unit = st.selectbox("Field size unit", ["Hectares", "Acres"], key=f"_{key_prefix}_yl_unit")
+        unit = st.selectbox(
+            tr_label("Field size unit", lang), ["Hectares", "Acres"], key=f"_{key_prefix}_yl_unit",
+            format_func=lambda u: tr_label(u, lang),
+        )
     with c2:
         field_size = st.number_input(
-            f"Field size ({unit.lower()})", min_value=0.0, value=1.0, step=0.1,
+            tr_template("Field size ({unit})", lang, unit=tr_label(unit.lower(), lang)),
+            min_value=0.0, value=1.0, step=0.1,
             key=f"_{key_prefix}_yl_size",
         )
     with c3:
         default_yield = REFERENCE_YIELD_T_PER_HA.get(crop, 5.0)
         yield_per_ha = st.number_input(
-            "Expected yield (t/ha if healthy)", min_value=0.0,
+            tr_label("Expected yield (t/ha if healthy)", lang), min_value=0.0,
             value=default_yield, step=0.5, key=f"_{key_prefix}_yl_yield",
-            help="Pre-filled with a rough global reference for this crop — "
-                 "replace with your farm's typical yield for a more accurate estimate.",
+            help=tr_label(
+                "Pre-filled with a rough global reference for this crop — "
+                "replace with your farm's typical yield for a more accurate estimate.",
+                lang,
+            ),
         )
     with c4:
         price_per_unit = st.number_input(
-            "Price per tonne (optional)", min_value=0.0, value=0.0, step=10.0,
+            tr_label("Price per tonne (optional)", lang), min_value=0.0, value=0.0, step=10.0,
             key=f"_{key_prefix}_yl_price",
-            help="Leave at 0 to see only the yield-loss estimate, with no revenue figure.",
+            help=tr_label("Leave at 0 to see only the yield-loss estimate, with no revenue figure.", lang),
         )
 
     field_size_ha = field_size if unit == "Hectares" else field_size * HECTARES_PER_ACRE
@@ -642,17 +679,17 @@ def render_yield_loss_estimator(crop: str, disease: str, severity: str, key_pref
     if est["revenue_lost_low"] is not None:
         revenue_html = (
             f'<div style="margin-top:.5rem;font-size:1.15rem;font-weight:700;color:{color}">'
-            f'≈ {est["revenue_lost_low"]:,.0f} – {est["revenue_lost_high"]:,.0f} estimated revenue at risk'
+            f'≈ {est["revenue_lost_low"]:,.0f} – {est["revenue_lost_high"]:,.0f} {tr_label("estimated revenue at risk", lang)}'
             f'</div>'
         )
 
     st.markdown(
         f"""
         <div class="card" style="border-left:5px solid {color}">
-          <div style="font-size:1.5rem;font-weight:700;color:var(--ink)">{low:.0f}–{high:.0f}% yield loss</div>
+          <div style="font-size:1.5rem;font-weight:700;color:var(--ink)">{low:.0f}–{high:.0f}% {tr_label('yield loss', lang)}</div>
           <div style="color:#4E5646;margin-top:.3rem">
-            ≈ {est['yield_lost_low']:.1f}–{est['yield_lost_high']:.1f} t on your {field_size_ha:.2f} ha field
-            (expected {est['expected_yield']:.1f} t if healthy)
+            ≈ {est['yield_lost_low']:.1f}–{est['yield_lost_high']:.1f} t {tr_label('on your', lang)} {field_size_ha:.2f} ha {tr_label('field (expected', lang)}
+            {est['expected_yield']:.1f} {tr_label('t if healthy)', lang)}
           </div>
           {revenue_html}
         </div>
@@ -663,8 +700,7 @@ def render_yield_loss_estimator(crop: str, disease: str, severity: str, key_pref
         f"""
         <div style="font-size:.78rem;color:#5B6353;margin-top:.4rem">
           {icon_html('info', size=14, margin_right='.3em')}
-          Planning estimate from published crop-disease research, not a guarantee — actual
-          loss depends on variety, timing of infection, weather, and management. Not financial advice.
+          {tr_label("Planning estimate from published crop-disease research, not a guarantee — actual loss depends on variety, timing of infection, weather, and management. Not financial advice.", lang)}
         </div>
         """,
         unsafe_allow_html=True,
@@ -674,7 +710,7 @@ def render_yield_loss_estimator(crop: str, disease: str, severity: str, key_pref
 # ---------------------------------------------------------------------------
 # Explainability — Grad-CAM
 # ---------------------------------------------------------------------------
-def _render_gradcam(pred: dict) -> None:
+def _render_gradcam(pred: dict, lang: str) -> None:
     """Render the Grad-CAM heatmap next to the leaf image the model saw.
 
     The heavy part (gradient computation) already ran once, right after
@@ -682,7 +718,7 @@ def _render_gradcam(pred: dict) -> None:
     opacity slider below only re-blends two already-computed arrays
     (src.gradcam.overlay_heatmap) — no re-inference, no gradient tape.
     """
-    st.markdown("#### Why this prediction? (Grad-CAM)")
+    st.markdown(f"#### {tr_label('Why this prediction? (Grad-CAM)', lang)}")
 
     heatmap = pred.get("gradcam_heatmap")
     base_image = pred.get("gradcam_base_image")
@@ -690,33 +726,33 @@ def _render_gradcam(pred: dict) -> None:
     if heatmap is None or base_image is None:
         callout(
             f"{icon_html('warning', size=18)}"
-            f"{pred.get('gradcam_error') or 'Explainability heatmap unavailable for this prediction.'}"
+            f"{pred.get('gradcam_error') or tr_label('Explainability heatmap unavailable for this prediction.', lang)}"
         )
         return
 
     alpha = st.slider(
-        "Heatmap intensity", 0.0, 1.0, 0.4, 0.05,
-        help="How strongly the heatmap is blended over the leaf image below. "
-             "This only re-blends the already-computed heatmap — it does not "
-             "re-run the model.",
+        tr_label("Heatmap intensity", lang), 0.0, 1.0, 0.4, 0.05,
+        help=tr_label(
+            "How strongly the heatmap is blended over the leaf image below. "
+            "This only re-blends the already-computed heatmap — it does not "
+            "re-run the model.",
+            lang,
+        ),
         key="_gradcam_alpha",
     )
     overlay = overlay_heatmap(heatmap, base_image, alpha=alpha)
 
     c1, c2 = st.columns(2)
     with c1:
-        st.image(base_image, caption="What the model saw (224×224 input)", use_container_width=True)
+        st.image(base_image, caption=tr_label("What the model saw (224×224 input)", lang), use_container_width=True)
     with c2:
-        st.image(overlay, caption=f"Grad-CAM for '{pred['disease']}'", use_container_width=True)
+        st.image(overlay, caption=f"{tr_label('Grad-CAM for', lang)} '{tr_disease(pred['disease'], lang)}'", use_container_width=True)
 
     st.markdown(
         f"""
         <div style="font-size:.8rem;color:#5B6353;margin-top:.25rem">
           {icon_html('info', size=14, margin_right='.3em')}
-          Warmer regions (red/yellow) contributed most to the prediction above;
-          cooler regions (blue) contributed least. Computed by backpropagating
-          the predicted class score to the model's last convolutional layer
-          (Grad-CAM, Selvaraju et al. 2017).
+          {tr_label("Warmer regions (red/yellow) contributed most to the prediction above; cooler regions (blue) contributed least. Computed by backpropagating the predicted class score to the model's last convolutional layer (Grad-CAM, Selvaraju et al. 2017).", lang)}
         </div>
         """,
         unsafe_allow_html=True,
@@ -755,7 +791,7 @@ def _build_disease_db_record(pred: dict, image_path: str) -> dict:
     }
 
 
-def _render_save_section(pred: dict) -> None:
+def _render_save_section(pred: dict, lang: str) -> None:
     """'Save Analysis' button, guarded against duplicate inserts.
 
     Mirrors pages/health.py's save pattern: each freshly *computed*
@@ -769,13 +805,13 @@ def _render_save_section(pred: dict) -> None:
 
     if saved_token == token:
         saved_id = st.session_state.get("_disease_saved_id")
-        st.success(f"Analysis saved to database (ID: {saved_id}).")
-        st.button("Saved ✓", use_container_width=True, disabled=True, key="_disease_saved_btn")
+        st.success(tr_template("Analysis saved to database (ID: {id}).", lang, id=saved_id))
+        st.button(f"{tr_label('Saved', lang)} ✓", use_container_width=True, disabled=True, key="_disease_saved_btn")
         return
 
-    if st.button("Save Analysis", type="primary", use_container_width=True, key="_disease_save_btn"):
+    if st.button(tr_label("Save Analysis", lang), type="primary", use_container_width=True, key="_disease_save_btn"):
         with safe_action("Saving analysis"):
-            with st.spinner("Saving analysis…"):
+            with st.spinner(tr_label("Saving analysis…", lang)):
                 image_path = _save_uploaded_image(
                     pred["_image_bytes"], pred["_image_name"], pred["_crop"]
                 )

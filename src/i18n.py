@@ -1042,6 +1042,306 @@ FIELD_SCAN_TA: dict[str, str] = {
         "இப்போது PDF அறிக்கையை உருவாக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
 }
 
+# ---------------------------------------------------------------------------
+# "Is this even a leaf?" uncertainty signals
+# (src/ood_detection.py + src/ood_feature_detector.py, via tr_template)
+# ---------------------------------------------------------------------------
+OOD_TA: dict[str, str] = {
+    "Top match is only {pct:.0f}% confident, and the model's "
+    "confidence is spread fairly evenly across all classes — signs this "
+    "may not be a clear photo of a leaf this model was trained on.":
+        "முதன்மை பொருத்தம் {pct:.0f}% நம்பகத்தன்மை மட்டுமே கொண்டுள்ளது, மேலும் மாதிரியின் "
+        "நம்பகத்தன்மை அனைத்து வகைகளிலும் ஏறத்தாழ சமமாகப் பரவியுள்ளது — இது இந்த மாதிரி "
+        "பயிற்சி பெற்ற இலையின் தெளிவான புகைப்படமாக இருக்காது என்பதற்கான அறிகுறி.",
+    "Top match is only {pct:.0f}% confident — lower than "
+    "expected for a clear, in-distribution photo.":
+        "முதன்மை பொருத்தம் {pct:.0f}% நம்பகத்தன்மை மட்டுமே கொண்டுள்ளது — ஒரு தெளிவான, "
+        "பொருத்தமான புகைப்படத்திற்கு எதிர்பார்க்கப்படுவதை விட குறைவு.",
+    "The model's confidence is spread fairly evenly across all "
+    "possible classes rather than settling on one — a sign of "
+    "genuine uncertainty, even though one class scored highest.":
+        "மாதிரியின் நம்பகத்தன்மை ஒரு வகையில் உறுதியாக இல்லாமல், சாத்தியமான அனைத்து "
+        "வகைகளிலும் ஏறத்தாழ சமமாகப் பரவியுள்ளது — ஒரு வகை அதிக மதிப்பெண் பெற்றாலும், "
+        "இது உண்மையான உறுதியின்மையின் அறிகுறி.",
+    "Top match is {pct:.0f}% confident, with a clear peak.":
+        "முதன்மை பொருத்தம் {pct:.0f}% நம்பகத்தன்மையுடன், தெளிவான உச்சத்துடன் உள்ளது.",
+    "Feature-space check unavailable for this model's architecture.":
+        "இந்த மாதிரியின் கட்டமைப்பிற்கு பட அம்ச-இட சரிபார்ப்பு கிடைக்கவில்லை.",
+    "Predicted class not found in this crop's embedding statistics.":
+        "கணிக்கப்பட்ட வகை இந்த பயிரின் உட்பொதிவு புள்ளிவிவரங்களில் கிடைக்கவில்லை.",
+    "This image's internal feature pattern sits unusually far "
+    "(distance {distance:.1f}, vs. a typical {threshold:.1f} for real "
+    "training examples) from anything the model saw labeled "
+    "'{class_label}' during training.":
+        "இந்த படத்தின் உள் அம்ச முறை, பயிற்சியின் போது மாதிரி '{class_label}' என "
+        "குறியிட்ட எதிலிருந்தும் வழக்கத்திற்கு மாறாக தொலைவில் உள்ளது (தூரம் "
+        "{distance:.1f}, உண்மையான பயிற்சி எடுத்துக்காட்டுகளுக்கு வழக்கமான "
+        "{threshold:.1f}-உடன் ஒப்பிடும்போது).",
+    "Feature pattern is consistent with training examples (distance {distance:.1f} of {threshold:.1f}).":
+        "அம்ச முறை பயிற்சி எடுத்துக்காட்டுகளுடன் ஒத்துப்போகிறது (தூரம் {distance:.1f} / {threshold:.1f}).",
+    "Feature pattern sits unusually far (distance {distance:.1f} vs. a "
+    "typical {threshold:.1f}) from training examples labeled "
+    "'{class_label}'.":
+        "அம்ச முறை '{class_label}' என குறியிடப்பட்ட பயிற்சி எடுத்துக்காட்டுகளிலிருந்து "
+        "வழக்கத்திற்கு மாறாக தொலைவில் உள்ளது (தூரம் {distance:.1f}, வழக்கமான {threshold:.1f}-உடன் ஒப்பிடும்போது).",
+}
+
+# ---------------------------------------------------------------------------
+# Disease Detection page (pages/disease.py)
+# ---------------------------------------------------------------------------
+DISEASE_PAGE_TA: dict[str, str] = {
+    "Disease Detection": "நோய் கண்டறிதல்",
+    "Upload a crop leaf image to detect diseases with AI.":
+        "AI மூலம் நோய்களைக் கண்டறிய ஒரு பயிர் இலைப் படத்தைப் பதிவேற்றவும்.",
+    "No trained model found.": "பயிற்சி பெற்ற மாதிரி எதுவும் இல்லை.",
+    "Train one first using": "முதலில் இதைப் பயன்படுத்தி ஒன்றைப் பயிற்சி செய்யவும்",
+    "(swap": "(மாற்றவும்",
+    "for any crop in": "எந்த பயிருக்கும்",
+    "If a model file exists but still won't load, check the server logs for details.":
+        "ஒரு மாதிரிக் கோப்பு இருந்தும் ஏற்றப்படவில்லை என்றால், விவரங்களுக்கு சேவையக பதிவுகளைச் சரிபார்க்கவும்.",
+    "Model unavailable.": "மாதிரி கிடைக்கவில்லை.",
+    "{crop}'s model file couldn't be loaded even though it's listed as "
+    "trained — check the server logs for details.":
+        "{crop} மாதிரிக் கோப்பு பயிற்சி பெற்றதாக பட்டியலிடப்பட்டிருந்தும் ஏற்ற முடியவில்லை — "
+        "விவரங்களுக்கு சேவையக பதிவுகளைச் சரிபார்க்கவும்.",
+    "Model loaded": "மாதிரி ஏற்றப்பட்டது",
+    "with {n} classes:": "{n} வகைகளுடன்:",
+    "1 · Upload leaf image": "1 · இலைப் படத்தைப் பதிவேற்றவும்",
+    "Leaf image (JPG / PNG)": "இலைப் படம் (JPG / PNG)",
+    "Uploaded leaf": "பதிவேற்றப்பட்ட இலை",
+    "Drop a clear, well-lit photo of a single leaf here.":
+        "ஒரே ஒரு இலையின் தெளிவான, நல்ல வெளிச்சமுள்ள புகைப்படத்தை இங்கே விடவும்.",
+    "Advanced options": "மேம்பட்ட விருப்பங்கள்",
+    "Confidence threshold": "நம்பகத்தன்மை வரம்பு",
+    "Predictions below this confidence are flagged as uncertain.":
+        "இந்த நம்பகத்தன்மைக்குக் கீழ் உள்ள முன்னறிவிப்புகள் உறுதியற்றதாகக் குறிக்கப்படும்.",
+    "Preprocessing": "முன்செயலாக்கம்",
+    "Noise reduction": "இரைச்சல் குறைப்பு",
+    "Apply OpenCV non-local-means denoising before inference. "
+    "Useful for grainy or low-light photos.":
+        "அனுமானத்திற்கு முன் OpenCV non-local-means இரைச்சல் நீக்கத்தைப் பயன்படுத்தவும். "
+        "தானியமான அல்லது குறைந்த வெளிச்ச புகைப்படங்களுக்குப் பயனுள்ளது.",
+    "Background handling": "பின்னணி கையாளுதல்",
+    "Softly flatten non-leaf-colored background toward neutral "
+    "gray so the model focuses on the leaf. Useful for busy "
+    "backgrounds; skip for close-up leaf-only photos.":
+        "மாதிரி இலையில் கவனம் செலுத்த, இலை நிறமற்ற பின்னணியை நடுநிலை சாம்பல் நிறமாக "
+        "மென்மையாக்கவும். பரபரப்பான பின்னணிகளுக்குப் பயனுள்ளது; இலை மட்டும் கொண்ட "
+        "நெருக்கமான புகைப்படங்களுக்குத் தவிர்க்கவும்.",
+    "Analyze": "பகுப்பாய்வு செய்யவும்",
+    "2 · Prediction result": "2 · முன்னறிவிப்பு முடிவு",
+    "Preprocessing image…": "படம் முன்செயலாக்கப்படுகிறது…",
+    "Running disease detection…": "நோய் கண்டறிதல் இயக்கப்படுகிறது…",
+    "Computing explainability heatmap…": "விளக்கமளிக்கும் வெப்ப வரைபடம் கணக்கிடப்படுகிறது…",
+    "Couldn't generate the explainability heatmap for this prediction.":
+        "இந்த முன்னறிவிப்புக்கான விளக்கமளிக்கும் வெப்ப வரைபடத்தை உருவாக்க முடியவில்லை.",
+    "Analyzing this image failed unexpectedly. Please try "
+    "again. If the problem continues, contact the app maintainer.":
+        "இந்த படத்தை பகுப்பாய்வு செய்வதில் எதிர்பாராத பிழை ஏற்பட்டது. மீண்டும் "
+        "முயற்சிக்கவும். சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+    "Awaiting analysis": "பகுப்பாய்வுக்காகக் காத்திருக்கிறது",
+    "Upload an image and click **Analyze** to see the prediction, "
+    "confidence, severity, and recommendation.":
+        "படத்தைப் பதிவேற்றி, முன்னறிவிப்பு, நம்பகத்தன்மை, தீவிரம் மற்றும் "
+        "பரிந்துரையைப் பார்க்க **பகுப்பாய்வு செய்யவும்** என்பதைக் கிளிக் செய்யவும்.",
+    "This doesn't look like a confident leaf match": "இது நம்பகமான இலை பொருத்தமாகத் தெரியவில்லை",
+    "Try a clearer, closer photo of a single leaf "
+    "against a plain background — the result below is shown for "
+    "reference, but treat it as unreliable.":
+        "எளிய பின்னணியில் ஒரே ஒரு இலையின் தெளிவான, நெருக்கமான புகைப்படத்தை "
+        "முயற்சிக்கவும் — கீழே உள்ள முடிவு குறிப்புக்காக மட்டுமே காட்டப்படுகிறது, "
+        "ஆனால் அதை நம்பகமற்றதாகக் கருதவும்.",
+    "Detected condition (uncertain)": "கண்டறியப்பட்ட நிலை (உறுதியற்றது)",
+    "Detected condition": "கண்டறியப்பட்ட நிலை",
+    "Confidence": "நம்பகத்தன்மை",
+    "model output": "மாதிரி வெளியீடு",
+    "Severity": "தீவிரம்",
+    "Threshold": "வரம்பு",
+    "cutoff for reliable result": "நம்பகமான முடிவுக்கான வரம்பு",
+    "Confidence is below the threshold. "
+    "The result may be uncertain — consider retaking the photo with "
+    "better lighting/focus.":
+        "நம்பகத்தன்மை வரம்புக்குக் கீழ் உள்ளது. முடிவு உறுதியற்றதாக இருக்கலாம் — "
+        "சிறந்த வெளிச்சம்/கவனத்துடன் புகைப்படத்தை மீண்டும் எடுக்க பரிசீலிக்கவும்.",
+    "Confidence breakdown by class": "வகைவாரியான நம்பகத்தன்மை பிரிவு",
+    "Confidence (%)": "நம்பகத்தன்மை (%)",
+    "threshold": "வரம்பு",
+    "Recommendation": "பரிந்துரை",
+    "Estimated yield loss if untreated": "சிகிச்சை அளிக்கவில்லை எனில் மதிப்பிடப்பட்ட மகசூல் இழப்பு",
+    "Based on published agricultural research for {disease} at "
+    "{severity} severity. Adjust the figures below to your own field.":
+        "{disease} நோய்க்கு {severity} தீவிரத்தில் வெளியிடப்பட்ட விவசாய ஆராய்ச்சியின் "
+        "அடிப்படையில். கீழேயுள்ள எண்களை உங்கள் சொந்த வயலுக்கு ஏற்ப மாற்றவும்.",
+    "Field size unit": "வயல் அளவு அலகு",
+    "Hectares": "ஹெக்டேர்",
+    "Acres": "ஏக்கர்",
+    "Field size ({unit})": "வயல் அளவு ({unit})",
+    "hectares": "ஹெக்டேர்",
+    "acres": "ஏக்கர்",
+    "Expected yield (t/ha if healthy)": "எதிர்பார்க்கப்படும் மகசூல் (ஆரோக்கியமாக இருந்தால் டன்/ஹெக்டேர்)",
+    "Pre-filled with a rough global reference for this crop — "
+    "replace with your farm's typical yield for a more accurate estimate.":
+        "இந்த பயிருக்கான தோராயமான உலகளாவிய குறிப்புடன் முன்கூட்டியே நிரப்பப்பட்டுள்ளது — "
+        "மிகச் சரியான மதிப்பீட்டிற்கு உங்கள் பண்ணையின் வழக்கமான மகசூலுடன் மாற்றவும்.",
+    "Price per tonne (optional)": "ஒரு டன்னுக்கான விலை (விருப்பத்திற்குரியது)",
+    "Leave at 0 to see only the yield-loss estimate, with no revenue figure.":
+        "வருவாய் எண் இல்லாமல் மகசூல்-இழப்பு மதிப்பீட்டை மட்டும் காண 0-ல் விடவும்.",
+    "estimated revenue at risk": "ஆபத்தில் உள்ள மதிப்பிடப்பட்ட வருவாய்",
+    "yield loss": "மகசூல் இழப்பு",
+    "on your": "உங்கள்",
+    "field (expected": "வயலில் (எதிர்பார்க்கப்படும்",
+    "t if healthy)": "டன் ஆரோக்கியமாக இருந்தால்)",
+    "Planning estimate from published crop-disease research, not a guarantee — actual "
+    "loss depends on variety, timing of infection, weather, and management. Not financial advice.":
+        "வெளியிடப்பட்ட பயிர்-நோய் ஆராய்ச்சியிலிருந்து திட்டமிடல் மதிப்பீடு, உத்தரவாதம் அல்ல — "
+        "உண்மையான இழப்பு வகை, தொற்றின் நேரம், வானிலை மற்றும் மேலாண்மையைப் பொறுத்தது. "
+        "இது நிதி ஆலோசனை அல்ல.",
+    "Why this prediction? (Grad-CAM)": "இந்த முன்னறிவிப்பு ஏன்? (Grad-CAM)",
+    "Explainability heatmap unavailable for this prediction.":
+        "இந்த முன்னறிவிப்புக்கான விளக்கமளிக்கும் வெப்ப வரைபடம் கிடைக்கவில்லை.",
+    "Heatmap intensity": "வெப்ப வரைபட தீவிரம்",
+    "How strongly the heatmap is blended over the leaf image below. "
+    "This only re-blends the already-computed heatmap — it does not "
+    "re-run the model.":
+        "வெப்ப வரைபடம் கீழே உள்ள இலைப் படத்தின் மீது எவ்வளவு தீவிரமாக கலக்கப்படுகிறது. "
+        "இது ஏற்கனவே கணக்கிடப்பட்ட வெப்ப வரைபடத்தை மட்டுமே மீண்டும் கலக்கிறது — "
+        "மாதிரியை மீண்டும் இயக்காது.",
+    "What the model saw (224×224 input)": "மாதிரி பார்த்தது (224×224 உள்ளீடு)",
+    "Grad-CAM for": "Grad-CAM க்கானது",
+    "Warmer regions (red/yellow) contributed most to the prediction above;"
+    " cooler regions (blue) contributed least. Computed by backpropagating"
+    " the predicted class score to the model's last convolutional layer"
+    " (Grad-CAM, Selvaraju et al. 2017).":
+        "வெப்பமான பகுதிகள் (சிவப்பு/மஞ்சள்) மேலே உள்ள முன்னறிவிப்புக்கு அதிகம் பங்களித்தன; "
+        "குளிர்ந்த பகுதிகள் (நீலம்) குறைவாக பங்களித்தன. கணிக்கப்பட்ட வகை மதிப்பெண்ணை "
+        "மாதிரியின் கடைசி convolutional அடுக்குக்கு பின்-பரப்புவதன் மூலம் கணக்கிடப்பட்டது "
+        "(Grad-CAM, Selvaraju et al. 2017).",
+    "Download PDF Report": "PDF அறிக்கையைப் பதிவிறக்கவும்",
+    "Couldn't generate the PDF report right now. Please try again.":
+        "இப்போது PDF அறிக்கையை உருவாக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+    "Analysis saved to database (ID: {id}).": "பகுப்பாய்வு தரவுத்தளத்தில் சேமிக்கப்பட்டது (ID: {id}).",
+    "Saved": "சேமிக்கப்பட்டது",
+    "Save Analysis": "பகுப்பாய்வை சேமிக்கவும்",
+    "Saving analysis…": "பகுப்பாய்வு சேமிக்கப்படுகிறது…",
+    "Re-run": "மீண்டும் இயக்கவும்",
+    "Crop": "பயிர்",
+}
+
+# ---------------------------------------------------------------------------
+# Dashboard page (pages/dashboard.py)
+# ---------------------------------------------------------------------------
+DASHBOARD_TA: dict[str, str] = {
+    "Dashboard": "கட்டுப்பாட்டு பலகை",
+    "Statistics and trends across all crop, disease, and environmental analyses.":
+        "அனைத்து பயிர், நோய் மற்றும் சுற்றுச்சூழல் பகுப்பாய்வுகளின் புள்ளிவிவரங்கள் மற்றும் போக்குகள்.",
+    "crop(s) trending worse": "பயிர்(கள்) மோசமடைந்து வருகின்றன",
+    "See the Outbreak Alerts page for details.": "விவரங்களுக்கு பரவல் எச்சரிக்கைகள் பக்கத்தைப் பார்க்கவும்.",
+    "Crop Health": "பயிர் ஆரோக்கியம்",
+    "Disease Detection": "நோய் கண்டறிதல்",
+    "Field Scans": "வயல் ஆய்வுகள்",
+    "Environmental": "சுற்றுச்சூழல்",
+    "Loading dashboard data failed unexpectedly. Please try again. "
+    "If the problem continues, contact the app maintainer.":
+        "கட்டுப்பாட்டு பலகை தரவை ஏற்றுவதில் எதிர்பாராத பிழை ஏற்பட்டது. மீண்டும் "
+        "முயற்சிக்கவும். சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+    "No crop health analyses saved yet. Run a "
+    "calculation on the <b>Crop Health Analysis</b> page and click "
+    "<b>Save Analysis</b> to populate this tab.":
+        "இதுவரை பயிர் ஆரோக்கிய பகுப்பாய்வுகள் சேமிக்கப்படவில்லை. <b>பயிர் ஆரோக்கிய "
+        "பகுப்பாய்வு</b> பக்கத்தில் ஒரு கணக்கீட்டை இயக்கி, இந்தத் தாவலை நிரப்ப "
+        "<b>பகுப்பாய்வை சேமிக்கவும்</b> என்பதைக் கிளிக் செய்யவும்.",
+    "No disease detection analyses saved yet. "
+    "Analyze a leaf image on the <b>Disease Detection</b> page and click "
+    "<b>Save Analysis</b> to populate this tab.":
+        "இதுவரை நோய் கண்டறிதல் பகுப்பாய்வுகள் சேமிக்கப்படவில்லை. <b>நோய் கண்டறிதல்</b> "
+        "பக்கத்தில் ஒரு இலைப் படத்தை பகுப்பாய்வு செய்து, இந்தத் தாவலை நிரப்ப "
+        "<b>பகுப்பாய்வை சேமிக்கவும்</b> என்பதைக் கிளிக் செய்யவும்.",
+    "No field scans saved yet. Run a batch "
+    "scan on the <b>Field Scan</b> page and click <b>Save Field Scan</b> "
+    "to populate this tab.":
+        "இதுவரை வயல் ஆய்வுகள் சேமிக்கப்படவில்லை. <b>வயல் ஆய்வு</b> பக்கத்தில் ஒரு "
+        "தொகுதி ஆய்வை இயக்கி, இந்தத் தாவலை நிரப்ப <b>வயல் ஆய்வை சேமிக்கவும்</b> "
+        "என்பதைக் கிளிக் செய்யவும்.",
+    "No environmental analyses saved yet. "
+    "Assess a reading on the <b>Environmental Analysis</b> page and click "
+    "<b>Save Analysis</b> to populate this tab.":
+        "இதுவரை சுற்றுச்சூழல் பகுப்பாய்வுகள் சேமிக்கப்படவில்லை. <b>சுற்றுச்சூழல் "
+        "பகுப்பாய்வு</b> பக்கத்தில் ஒரு அளவீட்டை மதிப்பிட்டு, இந்தத் தாவலை நிரப்ப "
+        "<b>பகுப்பாய்வை சேமிக்கவும்</b> என்பதைக் கிளிக் செய்யவும்.",
+    "Loading disease detection dashboard data failed unexpectedly. "
+    "Please try again. If the problem continues, contact the app maintainer.":
+        "நோய் கண்டறிதல் கட்டுப்பாட்டு பலகை தரவை ஏற்றுவதில் எதிர்பாராத பிழை ஏற்பட்டது. "
+        "மீண்டும் முயற்சிக்கவும். சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+    "Loading field scan dashboard data failed unexpectedly. "
+    "Please try again. If the problem continues, contact the app maintainer.":
+        "வயல் ஆய்வு கட்டுப்பாட்டு பலகை தரவை ஏற்றுவதில் எதிர்பாராத பிழை ஏற்பட்டது. "
+        "மீண்டும் முயற்சிக்கவும். சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+    "Loading environmental dashboard data failed unexpectedly. "
+    "Please try again. If the problem continues, contact the app maintainer.":
+        "சுற்றுச்சூழல் கட்டுப்பாட்டு பலகை தரவை ஏற்றுவதில் எதிர்பாராத பிழை ஏற்பட்டது. "
+        "மீண்டும் முயற்சிக்கவும். சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+    "Total Analyses": "மொத்த பகுப்பாய்வுகள்",
+    "all-time": "எல்லா காலத்திலும்",
+    "Healthy Plants": "ஆரோக்கியமான செடிகள்",
+    "of total": "மொத்தத்தில்",
+    "Diseased Plants": "நோய்வாய்ப்பட்ட செடிகள்",
+    "Avg Health Score": "சராசரி ஆரோக்கிய மதிப்பெண்",
+    "out of 100": "100-ல்",
+    "High-Risk Cases": "அதிக ஆபத்து வழக்குகள்",
+    "At Risk + Critical": "ஆபத்தில் + அபாயகரமானது",
+    "Number of analyses": "பகுப்பாய்வுகளின் எண்ணிக்கை",
+    "Disease distribution": "நோய் பரவல்",
+    "Analyses per day": "நாளொன்றுக்கான பகுப்பாய்வுகள்",
+    "Avg health score": "சராசரி ஆரோக்கிய மதிப்பெண்",
+    "Date": "தேதி",
+    "Analyses / day": "பகுப்பாய்வுகள் / நாள்",
+    "Health score trend": "ஆரோக்கிய மதிப்பெண் போக்கு",
+    "Crop": "பயிர்",
+    "Status": "நிலை",
+    "Crop-wise analysis": "பயிர்வாரியான பகுப்பாய்வு",
+    "Risk distribution": "ஆபத்து பரவல்",
+    "Healthy Leaves": "ஆரோக்கியமான இலைகள்",
+    "Diseased Leaves": "நோய்வாய்ப்பட்ட இலைகள்",
+    "Avg Confidence": "சராசரி நம்பகத்தன்மை",
+    "model output": "மாதிரி வெளியீடு",
+    "High Severity": "அதிக தீவிரம்",
+    "cases flagged High": "அதிகம் எனக் குறிக்கப்பட்ட வழக்குகள்",
+    "Avg confidence": "சராசரி நம்பகத்தன்மை",
+    "Avg confidence (%)": "சராசரி நம்பகத்தன்மை (%)",
+    "Confidence trend": "நம்பகத்தன்மை போக்கு",
+    "Disease": "நோய்",
+    "Severity distribution": "தீவிர பரவல்",
+    "Total Scans": "மொத்த ஆய்வுகள்",
+    "Leaves Scanned": "ஆய்வு செய்யப்பட்ட இலைகள்",
+    "across all scans": "அனைத்து ஆய்வுகளிலும்",
+    "Avg Healthy %": "சராசரி ஆரோக்கியம் %",
+    "per scan": "ஒரு ஆய்வுக்கு",
+    "Avg Field Score": "சராசரி வயல் மதிப்பெண்",
+    "High-Risk Scans": "அதிக ஆபத்து ஆய்வுகள்",
+    "Scans per day": "நாளொன்றுக்கான ஆய்வுகள்",
+    "Avg field score": "சராசரி வயல் மதிப்பெண்",
+    "Scans / day": "ஆய்வுகள் / நாள்",
+    "Field health score trend": "வயல் ஆரோக்கிய மதிப்பெண் போக்கு",
+    "Avg field health score by crop": "பயிர்வாரியான சராசரி வயல் ஆரோக்கிய மதிப்பெண்",
+    "Number of scans": "ஆய்வுகளின் எண்ணிக்கை",
+    "Dominant disease across scans": "ஆய்வுகளில் முதன்மை நோய்",
+    "Aggregate severity breakdown (all scanned leaves)": "மொத்த தீவிர பிரிவு (அனைத்து ஆய்வு செய்யப்பட்ட இலைகள்)",
+    "None detected": "எதுவும் கண்டறியப்படவில்லை",
+    "Optimal Readings": "உகந்த அளவீடுகள்",
+    "High-Risk Readings": "அதிக ஆபத்து அளவீடுகள்",
+    "High + Critical": "அதிகம் + அபாயகரமானது",
+    "Avg Model Confidence": "சராசரி மாதிரி நம்பகத்தன்மை",
+    "trained risk model": "பயிற்சி பெற்ற ஆபத்து மாதிரி",
+    "Risk level distribution": "ஆபத்து அளவு பரவல்",
+    "Risk level": "ஆபத்து அளவு",
+    "Logged factor ranges": "பதிவு செய்யப்பட்ட காரணி வரம்புகள்",
+    "Value": "மதிப்பு",
+    "Temp (°C)": "வெப்பநிலை (°C)",
+    "Humidity (%)": "ஈரப்பதம் (%)",
+    "Soil moisture (%)": "மண் ஈரப்பதம் (%)",
+    "Rainfall (mm)": "மழைப்பொழிவு (mm)",
+}
+
 
 # ---------------------------------------------------------------------------
 # Lookup helpers — every one falls back to the English source on a miss,
@@ -1123,6 +1423,12 @@ def tr_template(english_template: str, lang: str, **kwargs) -> str:
         template = HISTORY_TA[english_template]
     elif lang == "ta" and english_template in FIELD_SCAN_TA:
         template = FIELD_SCAN_TA[english_template]
+    elif lang == "ta" and english_template in OOD_TA:
+        template = OOD_TA[english_template]
+    elif lang == "ta" and english_template in DISEASE_PAGE_TA:
+        template = DISEASE_PAGE_TA[english_template]
+    elif lang == "ta" and english_template in DASHBOARD_TA:
+        template = DASHBOARD_TA[english_template]
     else:
         template = english_template
     return template.format(**kwargs)
@@ -1167,7 +1473,8 @@ def tr_label(text: str, lang: str) -> str:
         return text
     for table in (UI_LABELS_TA, NAV_LABELS_TA, HEALTH_STATUS_TA, RISK_LEVEL_TA, MISC_TA, HOME_TA,
                   ENV_UI_TA, ENV_FACTOR_LABELS_TA, ENV_STATUS_TA, ENV_NOTE_TA, HEALTH_ENGINE_TA, REC_MISC_TA,
-                  HEALTH_PAGE_TA, ABOUT_TA, ALERTS_TA, OUTBREAK_TA, HISTORY_TA, FIELD_SCAN_TA):
+                  HEALTH_PAGE_TA, ABOUT_TA, ALERTS_TA, OUTBREAK_TA, HISTORY_TA, FIELD_SCAN_TA,
+                  OOD_TA, DISEASE_PAGE_TA, DASHBOARD_TA):
         if text in table:
             return table[text]
     return text

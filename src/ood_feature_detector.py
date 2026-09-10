@@ -102,6 +102,7 @@ def compute_feature_ood_signal(
     img_batch: np.ndarray,
     predicted_class: str,
     stats: dict,
+    lang: str = "en",
 ) -> dict:
     """Mahalanobis distance from this image's embedding to its predicted
     class's training-data centroid, in the crop's PCA-reduced feature space.
@@ -111,6 +112,7 @@ def compute_feature_ood_signal(
         img_batch: shape (1, H, W, 3), the exact batch fed to model.predict.
         predicted_class: the class name the softmax prediction landed on.
         stats: output of load_stats() for this crop (must not be None).
+        lang: UI language for the "reason" string (see src/i18n.py).
 
     Returns:
         {
@@ -120,12 +122,14 @@ def compute_feature_ood_signal(
             "reason": str,
         }
     """
+    from src.i18n import tr_template, tr_disease
+
     embed_model = _get_embedding_model(model)
     if embed_model is None:
         return {
             "distance": None, "threshold": stats["distance_threshold"],
             "is_likely_ood": False,
-            "reason": "Feature-space check unavailable for this model's architecture.",
+            "reason": tr_template("Feature-space check unavailable for this model's architecture.", lang),
         }
 
     raw_embedding = embed_model.predict(img_batch, verbose=0)[0].astype(np.float64)
@@ -138,7 +142,7 @@ def compute_feature_ood_signal(
         return {
             "distance": None, "threshold": stats["distance_threshold"],
             "is_likely_ood": False,
-            "reason": "Predicted class not found in this crop's embedding statistics.",
+            "reason": tr_template("Predicted class not found in this crop's embedding statistics.", lang),
         }
     class_idx = stats["class_names"].index(predicted_class)
     class_mean = stats["class_means"][class_idx]
@@ -148,15 +152,20 @@ def compute_feature_ood_signal(
     threshold = stats["distance_threshold"]
     is_likely_ood = distance > threshold
 
+    class_label = tr_disease(predicted_class, lang)
     if is_likely_ood:
-        reason = (
-            f"This image's internal feature pattern sits unusually far "
-            f"(distance {distance:.1f}, vs. a typical {threshold:.1f} for real "
-            f"training examples) from anything the model saw labeled "
-            f"'{predicted_class.replace('_', ' ')}' during training."
+        reason = tr_template(
+            "This image's internal feature pattern sits unusually far "
+            "(distance {distance:.1f}, vs. a typical {threshold:.1f} for real "
+            "training examples) from anything the model saw labeled "
+            "'{class_label}' during training.",
+            lang, distance=distance, threshold=threshold, class_label=class_label,
         )
     else:
-        reason = f"Feature pattern is consistent with training examples (distance {distance:.1f} of {threshold:.1f})."
+        reason = tr_template(
+            "Feature pattern is consistent with training examples (distance {distance:.1f} of {threshold:.1f}).",
+            lang, distance=distance, threshold=threshold,
+        )
 
     return {
         "distance": round(distance, 2),
@@ -171,6 +180,7 @@ def compute_feature_ood_signals_batch(
     img_batch: np.ndarray,
     predicted_classes: list[str],
     stats: dict,
+    lang: str = "en",
 ) -> list[dict]:
     """Batched version of compute_feature_ood_signal — one embedding-model
     forward pass for the whole batch instead of one per image, matching
@@ -180,17 +190,20 @@ def compute_feature_ood_signals_batch(
     Args:
         img_batch: shape (N, H, W, 3) — N preprocessed leaf images.
         predicted_classes: length-N list, each image's predicted class name.
+        lang: UI language for each "reason" string (see src/i18n.py).
 
     Returns:
         A length-N list of the same per-image dicts compute_feature_ood_signal()
         returns.
     """
+    from src.i18n import tr_template, tr_disease
+
     embed_model = _get_embedding_model(model)
     if embed_model is None:
         return [{
             "distance": None, "threshold": stats["distance_threshold"],
             "is_likely_ood": False,
-            "reason": "Feature-space check unavailable for this model's architecture.",
+            "reason": tr_template("Feature-space check unavailable for this model's architecture.", lang),
         }] * len(predicted_classes)
 
     raw_embeddings = embed_model.predict(img_batch, verbose=0).astype(np.float64)
@@ -202,7 +215,7 @@ def compute_feature_ood_signals_batch(
             results.append({
                 "distance": None, "threshold": stats["distance_threshold"],
                 "is_likely_ood": False,
-                "reason": "Predicted class not found in this crop's embedding statistics.",
+                "reason": tr_template("Predicted class not found in this crop's embedding statistics.", lang),
             })
             continue
 
@@ -212,14 +225,19 @@ def compute_feature_ood_signals_batch(
         threshold = stats["distance_threshold"]
         is_likely_ood = distance > threshold
 
+        class_label = tr_disease(predicted_class, lang)
         if is_likely_ood:
-            reason = (
-                f"Feature pattern sits unusually far (distance {distance:.1f} vs. a "
-                f"typical {threshold:.1f}) from training examples labeled "
-                f"'{predicted_class.replace('_', ' ')}'."
+            reason = tr_template(
+                "Feature pattern sits unusually far (distance {distance:.1f} vs. a "
+                "typical {threshold:.1f}) from training examples labeled "
+                "'{class_label}'.",
+                lang, distance=distance, threshold=threshold, class_label=class_label,
             )
         else:
-            reason = f"Feature pattern is consistent with training examples (distance {distance:.1f} of {threshold:.1f})."
+            reason = tr_template(
+                "Feature pattern is consistent with training examples (distance {distance:.1f} of {threshold:.1f}).",
+                lang, distance=distance, threshold=threshold,
+            )
 
         results.append({
             "distance": round(distance, 2),
