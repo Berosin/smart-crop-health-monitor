@@ -28,11 +28,12 @@ machine learning models and persistent SQLite storage.
 14. [Project Structure](#14-project-structure)
 15. [Installation](#15-installation)
 16. [How to Run](#16-how-to-run)
-17. [Sample Usage](#17-sample-usage)
-18. [Results](#18-results)
-19. [Limitations](#19-limitations)
-20. [Future Enhancements](#20-future-enhancements)
-21. [Conclusion](#21-conclusion)
+17. [Deployment](#17-deployment)
+18. [Sample Usage](#18-sample-usage)
+19. [Results](#19-results)
+20. [Limitations](#20-limitations)
+21. [Future Enhancements](#21-future-enhancements)
+22. [Conclusion](#22-conclusion)
 
 ---
 
@@ -352,19 +353,24 @@ smart-crop-health-monitor/
 ├── app.py                       # Streamlit entry point (home page + navigation)
 ├── config.py                    # Central configuration & constants
 ├── requirements.txt             # Python dependencies
+├── runtime.txt                  # Pinned Python version (Streamlit Cloud)
+├── packages.txt                 # apt packages (Streamlit Cloud, for OpenCV)
 ├── README.md                    # This file
 ├── .streamlit/config.toml       # App theme (colors, fonts)
+├── .streamlit/secrets.toml.example  # Template for API keys / MODELS_ZIP_URL
 ├── database/                    # SQLite database file (created on first save)
-├── models/
-│   ├── disease_model/            # Trained MobileNetV2 Keras model + labels
-│   └── environment_model/         # Trained scikit-learn model + metadata
+├── models/                      # Trained weights — gitignored; see Deployment
+│   ├── disease_model_<crop>/     # model.keras + labels.json + embedding_stats.npz
+│   └── environment_model/         # model.joblib + metadata.json
 ├── data/                          # Training/sample images (not committed)
 ├── src/                             # Core logic, independent of Streamlit
 │   ├── model_training.py             # Disease CNN: build, train, evaluate
+│   ├── model_fetch.py                 # Downloads models.zip on first deploy boot
 │   ├── dataset_prep.py                # Dataset loading/splitting utilities
 │   ├── environment_model.py            # Env. risk model: train, compare, predict
 │   ├── health_engine.py                 # Combines disease + env into a health score
 │   ├── recommendation_engine.py          # Rule-based agricultural recommendations
+│   ├── crop_doctor.py                     # Rule-based Q&A over a saved record
 │   ├── image_preprocessing.py             # OpenCV validation/preprocessing pipeline
 │   ├── validation.py                       # Shared input validation
 │   ├── errors.py                            # Shared exceptions + safe error handling
@@ -374,11 +380,14 @@ smart-crop-health-monitor/
 │   └── icons.py                        # Tabler Icons rendering
 └── pages/                            # One module per app page
     ├── disease.py                     # Disease Detection (image upload)
-    ├── environment.py                  # Environmental Analysis
-    ├── health.py                        # Crop Health Analysis (+ Save Analysis)
-    ├── dashboard.py                      # Statistics & charts
-    ├── history.py                         # Saved analyses: filter/sort/delete
-    └── about.py                            # Project info
+    ├── field_scan.py                   # Field Scan (batch leaf photos)
+    ├── environment.py                   # Environmental Analysis
+    ├── health.py                         # Crop Health Analysis (+ Save Analysis)
+    ├── crop_doctor.py                     # Crop Doctor chat
+    ├── alerts.py                           # Outbreak Alerts
+    ├── dashboard.py                         # Statistics & charts
+    ├── history.py                            # Saved analyses: filter/sort/delete
+    └── about.py                               # Project info
 ```
 
 ## 15. Installation
@@ -421,7 +430,62 @@ The app opens automatically in your browser at `http://localhost:8501`.
 Use the sidebar to navigate between Home, Dashboard, Disease Detection,
 Environmental Analysis, Crop Health Analysis, Analysis History, and About.
 
-## 17. Sample Usage
+## 17. Deployment
+
+This app deploys to **Streamlit Community Cloud** (free, connects directly
+to a GitHub repo). Two things need setting up beyond a normal `git push`,
+because both are deliberately kept out of the repository itself:
+
+**1. Trained model weights.** `models/` is gitignored (see its comment in
+`.gitignore`) — weights don't belong in normal git history. Instead,
+`src/model_fetch.py` downloads and extracts a `models.zip` from a URL you
+host, once, the first time the deployed app boots:
+
+```bash
+# After training all five disease-detection crops + the environment model
+# (see Installation above), package everything the app needs:
+cd models
+zip -r ../models.zip . -x ".gitkeep"
+cd ..
+```
+
+This zip should contain `disease_model_<crop>/model.keras`,
+`disease_model_<crop>/labels.json`, `disease_model_<crop>/embedding_stats.npz`
+(if you've run `colab/export_embedding_stats.py`), and
+`environment_model/model.joblib` — i.e. exactly the files `.gitignore`
+excludes. Upload `models.zip` somewhere with a direct-download URL — the
+simplest option is attaching it to a **GitHub Release** on this repo (Releases
+→ Draft a new release → attach `models.zip` as a binary asset → publish;
+the asset's URL is a stable direct-download link).
+
+**2. Secrets.** Copy `.streamlit/secrets.toml.example`'s two keys into your
+Streamlit Cloud app's **Settings → Secrets**:
+
+```toml
+OPENWEATHERMAP_API_KEY = "..."   # optional — manual weather entry works without it
+MODELS_ZIP_URL = "https://github.com/<you>/<repo>/releases/download/<tag>/models.zip"
+```
+
+**3. Deploy.** Point Streamlit Community Cloud at this repo, branch `main`,
+main file `app.py`. `runtime.txt` pins Python 3.11 and `packages.txt` adds
+the `libgl1`/`libglib2.0-0` apt packages OpenCV needs on Streamlit Cloud's
+base image — both already committed, no action needed.
+
+On first boot, the app downloads and extracts `models.zip` (shown as a
+progress bar) before anything else renders; every subsequent boot is a fast
+no-op filesystem check (`src/model_fetch.py`'s `models_present()`) since the
+weights are now on disk. Redeploys on Streamlit Cloud get a fresh container
+each time, so **this first-boot download happens again after every
+redeploy** — expected, and worth knowing about if a redeploy looks slow.
+
+**Data persistence note:** Streamlit Community Cloud's filesystem is
+ephemeral — the SQLite database (`database/crop_health.db`) and any
+uploaded images reset on redeploy or a container restart, same as
+`models/` above. Fine for a course demo; for anything persistent beyond
+that, `database/crop_health.db`'s path would need to point at real
+persistent storage instead.
+
+## 18. Sample Usage
 
 **Scenario: checking on a tomato plant.**
 
@@ -443,7 +507,7 @@ Environmental Analysis, Crop Health Analysis, Analysis History, and About.
 5. Open **Analysis History** to filter, sort, inspect, or delete saved
    records, or **Dashboard** to see it reflected in the live statistics.
 
-## 18. Results
+## 19. Results
 
 - The disease-detection CNN follows a standard MobileNetV2 transfer-
   learning recipe and is evaluated with accuracy, a full classification
@@ -466,7 +530,7 @@ Environmental Analysis, Crop Health Analysis, Analysis History, and About.
   unhandled exceptions across all seven pages in both empty-database and
   populated-database states.
 
-## 19. Limitations
+## 20. Limitations
 
 - The disease-detection model is trained on a limited class set
   (`Healthy`, `Early_Blight`, `Late_Blight`) and a single MobileNetV2
@@ -489,7 +553,7 @@ Environmental Analysis, Crop Health Analysis, Analysis History, and About.
 - There is no user authentication or multi-farm/multi-user data
   separation — all saved analyses share one database.
 
-## 20. Future Enhancements
+## 21. Future Enhancements
 
 - Expand the disease-detection dataset to more crops and diseases, and
   add an explicit "unknown/other" class for out-of-distribution images.
@@ -505,7 +569,7 @@ Environmental Analysis, Crop Health Analysis, Analysis History, and About.
 - Introduce localization/multi-language support for broader farmer
   accessibility.
 
-## 21. Conclusion
+## 22. Conclusion
 
 This project demonstrates a complete, working application of AI in
 agriculture: two independently trained and evaluated machine learning

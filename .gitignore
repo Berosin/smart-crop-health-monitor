@@ -29,18 +29,24 @@ data/processed/*
 # Trained model artifacts and generated evaluation output.
 # Model weights should be distributed through Git LFS, a release asset, or
 # external model storage rather than committed to the normal repository.
+# See README's "Deployment" section: src/model_fetch.py downloads and
+# extracts a models.zip release asset into this directory on first boot.
 models/**
 !models/.gitkeep
-!models/disease_labels.json
 !models/environment_model/
 !models/environment_model/metadata.json
 models/**/*.h5
 models/**/*.keras
 models/**/*.pkl
 models/**/*.joblib
+models/**/*.npz
 models/**/saved_model/
 models/**/logs/
 models/**/*.png
+
+# The zip built for the GitHub Release upload (see README's Deployment
+# section) — a local packaging artifact only, never committed.
+/models.zip
 
 # Local environment and generated reports
 .env

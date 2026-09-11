@@ -14,6 +14,7 @@ from config import APP_CONFIG, get_trained_crops
 from src.db import get_analyses, get_disease_analyses, get_environment_analyses
 from src.errors import DatabaseError, logger
 from src.i18n import get_language, tr_label, tr_crop
+from src.model_fetch import ensure_models_available
 from src.outbreak_detection import load_outbreak_signals, get_active_alerts
 from utils.ui import (
     inject_custom_css,
@@ -185,6 +186,7 @@ def render_home() -> None:
 def main() -> None:
     set_page_config("Home")
     inject_custom_css()
+    ensure_models_available()
     current = render_sidebar()
 
     router = {
