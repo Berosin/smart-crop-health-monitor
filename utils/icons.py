@@ -41,6 +41,7 @@ ICONS: dict[str, OutlineIcon] = {
     "field_scan":  OutlineIcon.MAP_2,
     "alerts":      OutlineIcon.ALERT_TRIANGLE,
     "weather":     OutlineIcon.CLOUD_RAIN,
+    "crop_doctor": OutlineIcon.STETHOSCOPE,
 
     # Environmental factors
     "temperature": OutlineIcon.THERMOMETER,

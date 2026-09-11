@@ -32,6 +32,7 @@ import pages.field_scan as field_scan
 import pages.alerts as alerts
 import pages.environment as environment
 import pages.health as health
+import pages.crop_doctor as crop_doctor
 import pages.history as history
 import pages.about as about
 
@@ -104,6 +105,7 @@ def render_home() -> None:
         ("health", "Score crop health", "Combine the image and environmental signals into one health score."),
         ("dashboard", "Visualize trends", "See stats and charts across all your past analyses."),
         ("history", "Keep history", "Save completed analyses and review them later."),
+        ("crop_doctor", "Ask the Crop Doctor", "Ask why a result was flagged, what happens if untreated, and get answers grounded in that saved analysis."),
     ]
     # A CSS grid (see .feature-grid in utils/ui.py) rather than
     # st.columns(len(feats)) — st.columns forces all 7 cards onto one row
@@ -193,6 +195,7 @@ def main() -> None:
         "alerts":      alerts.render,
         "environment": environment.render,
         "health":      health.render,
+        "crop_doctor": crop_doctor.render,
         "history":     history.render,
         "about":       about.render,
     }

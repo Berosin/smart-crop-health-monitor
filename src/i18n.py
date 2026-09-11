@@ -1342,6 +1342,189 @@ DASHBOARD_TA: dict[str, str] = {
     "Rainfall (mm)": "மழைப்பொழிவு (mm)",
 }
 
+# ---------------------------------------------------------------------------
+# Crop Doctor — rule-based Q&A over a saved analysis record
+# (src/crop_doctor.py, via tr_template) + pages/crop_doctor.py UI strings
+# ---------------------------------------------------------------------------
+CROP_DOCTOR_TA: dict[str, str] = {
+    # --- src/crop_doctor.py answer templates ---
+    "I couldn't work that out from this record. Try one of the "
+    "suggested questions below, or rephrase — e.g. \"why is this "
+    "moderate severity?\"":
+        "இந்த பதிவிலிருந்து அதைக் கண்டறிய முடியவில்லை. கீழே உள்ள பரிந்துரைக்கப்பட்ட "
+        "கேள்விகளில் ஒன்றை முயற்சிக்கவும், அல்லது வேறுவிதமாகக் கேட்கவும் — உதாரணமாக "
+        "\"இது ஏன் மிதமான தீவிரம்?\"",
+    "This {kind} record doesn't have a disease/severity call to explain.":
+        "இந்த {kind} பதிவில் விளக்க நோய்/தீவிர முடிவு இல்லை.",
+    "'{disease}' was recorded at {severity} severity.":
+        "'{disease}' {severity} தீவிரத்தில் பதிவு செய்யப்பட்டது.",
+    "This {kind} record doesn't have a model confidence value stored.":
+        "இந்த {kind} பதிவில் மாதிரி நம்பகத்தன்மை மதிப்பு சேமிக்கப்படவில்லை.",
+    "The model was {pct:.0f}% confident in '{disease}' — that's a high-confidence call.":
+        "மாதிரி '{disease}' என்பதில் {pct:.0f}% நம்பகத்தன்மை கொண்டிருந்தது — இது அதிக நம்பகத்தன்மையான முடிவு.",
+    "The model was {pct:.0f}% confident in '{disease}' — moderate confidence, usually "
+    "reliable, but a second clear photo wouldn't hurt if you want to be sure.":
+        "மாதிரி '{disease}' என்பதில் {pct:.0f}% நம்பகத்தன்மை கொண்டிருந்தது — மிதமான "
+        "நம்பகத்தன்மை, பொதுவாக நம்பகமானது, ஆனால் நிச்சயமாக அறிய விரும்பினால் இரண்டாவது "
+        "தெளிவான புகைப்படம் எடுப்பது நல்லது.",
+    "The model was only {pct:.0f}% confident in '{disease}' — that's on the lower side. "
+    "Consider retaking the photo with better lighting and a closer, single-leaf shot for "
+    "a more reliable result.":
+        "மாதிரி '{disease}' என்பதில் {pct:.0f}% நம்பகத்தன்மை மட்டுமே கொண்டிருந்தது — இது "
+        "குறைவான பக்கத்தில் உள்ளது. மிகவும் நம்பகமான முடிவுக்கு, சிறந்த வெளிச்சத்துடன் "
+        "நெருக்கமான, ஒரே இலையின் புகைப்படத்தை மீண்டும் எடுக்க பரிசீலிக்கவும்.",
+    "This record doesn't show a disease to leave untreated — it was healthy, or has "
+    "no disease/severity call to reason about.":
+        "இந்த பதிவில் சிகிச்சையளிக்காமல் விடுவதற்கான நோய் எதுவும் இல்லை — இது ஆரோக்கியமாக "
+        "இருந்தது, அல்லது பகுத்தாய்வதற்கு நோய்/தீவிர முடிவு இல்லை.",
+    "'{disease}' at {severity} severity isn't in the yield-loss reference table yet, "
+    "so I can't give a data-backed estimate — but as a rule, delaying treatment on a "
+    "spreading leaf disease rarely helps and usually costs more the longer it waits.":
+        "'{disease}' {severity} தீவிரத்தில் இன்னும் மகசூல்-இழப்பு குறிப்பு அட்டவணையில் "
+        "இல்லை, எனவே தரவு அடிப்படையிலான மதிப்பீட்டை தர முடியாது — ஆனால் ஒரு விதியாக, "
+        "பரவும் இலை நோய்க்கு சிகிச்சையை தாமதப்படுத்துவது அரிதாகவே உதவும், மேலும் அது "
+        "எவ்வளவு காத்திருக்கிறதோ அவ்வளவு அதிகமாக செலவாகும்.",
+    "Published research on {disease} at {severity} severity suggests {low:.0f}-{high:.0f}% "
+    "yield loss if left untreated under comparable conditions — on a 1-hectare field "
+    "yielding {yield_per_ha:.1f} t/ha, that's roughly {yl_low:.1f}-{yl_high:.1f} tonnes. It "
+    "typically doesn't improve on its own; treating promptly is the lower-risk choice.":
+        "{disease} {severity} தீவிரத்தில் இருந்தால், சிகிச்சையளிக்காமல் விட்டால் "
+        "ஒப்பிடத்தக்க நிலைமைகளின் கீழ் {low:.0f}-{high:.0f}% மகசூல் இழப்பு ஏற்படும் என "
+        "வெளியிடப்பட்ட ஆராய்ச்சி கூறுகிறது — 1 ஹெக்டேர் வயலில் {yield_per_ha:.1f} டன்/ஹெக்டேர் "
+        "மகசூல் எதிர்பார்க்கப்பட்டால், அது தோராயமாக {yl_low:.1f}-{yl_high:.1f} டன்கள். இது "
+        "பொதுவாக தானாக மேம்படாது; உடனடியாக சிகிச்சையளிப்பதே குறைந்த ஆபத்துள்ள தேர்வு.",
+    "No disease was detected on this record, so there's nothing here that would spread.":
+        "இந்த பதிவில் எந்த நோயும் கண்டறியப்படவில்லை, எனவே இங்கே பரவக்கூடியது எதுவும் இல்லை.",
+    "Yes — {disease} is known to spread quickly, especially in humid or wet conditions. "
+    "Isolate or remove affected material where possible and treat promptly to limit it "
+    "reaching nearby plants.":
+        "ஆம் — {disease} விரைவாக பரவும் என அறியப்படுகிறது, குறிப்பாக ஈரப்பதமான அல்லது "
+        "நனைந்த நிலைமைகளில். முடிந்தால் பாதிக்கப்பட்ட பகுதிகளை தனிமைப்படுத்தவும் அல்லது "
+        "அகற்றவும், அருகிலுள்ள செடிகளை அடையாமல் தடுக்க உடனடியாக சிகிச்சையளிக்கவும்.",
+    "{disease} can spread under favorable (humid/warm) conditions, but usually more "
+    "slowly than blast/blight-type diseases. Regular monitoring and timely treatment "
+    "should keep it contained.":
+        "{disease} சாதகமான (ஈரப்பதம்/வெப்பமான) நிலைமைகளின் கீழ் பரவக்கூடும், ஆனால் "
+        "பொதுவாக blast/blight வகை நோய்களை விட மெதுவாக. வழக்கமான கண்காணிப்பும் "
+        "சரியான நேரத்தில் சிகிச்சையும் அதை கட்டுப்பாட்டில் வைத்திருக்கும்.",
+    "I don't have a specific spread-risk rule for '{disease}' yet, but as a general "
+    "precaution, monitor nearby plants and treat promptly regardless.":
+        "'{disease}' க்கான குறிப்பிட்ட பரவல்-ஆபத்து விதி இன்னும் என்னிடம் இல்லை, ஆனால் "
+        "பொதுவான முன்னெச்சரிக்கையாக, அருகிலுள்ள செடிகளை கண்காணித்து, எப்படியிருந்தாலும் "
+        "உடனடியாக சிகிச்சையளிக்கவும்.",
+    "No disease was detected here, but these readings were outside {crop}'s "
+    "ideal range, which is worth watching:\n{bullets}":
+        "இங்கே எந்த நோயும் கண்டறியப்படவில்லை, ஆனால் இந்த அளவீடுகள் {crop}-ன் "
+        "உகந்த வரம்புக்கு வெளியே இருந்தன, இதைக் கவனிக்க வேண்டும்:\n{bullets}",
+    "No disease was detected on this record, and the logged readings (if any) were "
+    "within range — nothing here points to a cause because there's no problem to "
+    "explain.":
+        "இந்த பதிவில் எந்த நோயும் கண்டறியப்படவில்லை, மேலும் பதிவு செய்யப்பட்ட அளவீடுகள் "
+        "(ஏதேனும் இருந்தால்) வரம்பிற்குள் இருந்தன — விளக்குவதற்கு சிக்கல் எதுவும் "
+        "இல்லாததால் இங்கே எந்த காரணத்தையும் சுட்டிக்காட்டவில்லை.",
+    "'{disease}' was detected at {severity} severity. These conditions were outside "
+    "{crop}'s ideal range and likely contributed:\n{bullets}":
+        "'{disease}' {severity} தீவிரத்தில் கண்டறியப்பட்டது. இந்த நிலைமைகள் "
+        "{crop}-ன் உகந்த வரம்புக்கு வெளியே இருந்தன, மேலும் அவை பங்களித்திருக்கலாம்:\n{bullets}",
+    "'{disease}' was detected at {severity} severity. The logged environmental "
+    "readings were within {crop}'s typical range, so the immediate cause here is the "
+    "leaf-image classification itself, not an obvious environmental trigger.":
+        "'{disease}' {severity} தீவிரத்தில் கண்டறியப்பட்டது. பதிவு செய்யப்பட்ட "
+        "சுற்றுச்சூழல் அளவீடுகள் {crop}-ன் வழக்கமான வரம்புக்குள் இருந்தன, எனவே இங்கு "
+        "உடனடி காரணம் இலைப்-பட வகைப்பாடே தவிர, தெளிவான சுற்றுச்சூழல் தூண்டுதல் அல்ல.",
+    "'{disease}' was detected at {severity} severity from the leaf image alone — this "
+    "record doesn't have environmental readings, so I can't say whether conditions "
+    "contributed. Check Environmental Analysis for this crop around the same date.":
+        "'{disease}' {severity} தீவிரத்தில் இலைப் படத்தில் இருந்து மட்டுமே கண்டறியப்பட்டது — "
+        "இந்த பதிவில் சுற்றுச்சூழல் அளவீடுகள் இல்லை, எனவே நிலைமைகள் பங்களித்தனவா என்று "
+        "சொல்ல முடியாது. அதே தேதியில் இந்த பயிருக்கான சுற்றுச்சூழல் பகுப்பாய்வைப் பார்க்கவும்.",
+    "This {kind} record doesn't have a health score stored.":
+        "இந்த {kind} பதிவில் ஆரோக்கிய மதிப்பெண் சேமிக்கப்படவில்லை.",
+    "The health score is {score}/100 ('{status}'), combining a disease-signal risk of "
+    "'{disease_risk}' and an environmental-signal risk of '{env_risk}' — disease is "
+    "weighed slightly more heavily (55%) than environment (45%) in this blend.":
+        "ஆரோக்கிய மதிப்பெண் {score}/100 ('{status}'), நோய்-சமிக்ஞை ஆபத்து '{disease_risk}' "
+        "மற்றும் சுற்றுச்சூழல்-சமிக்ஞை ஆபத்து '{env_risk}' ஆகியவற்றை இணைக்கிறது — இந்த "
+        "கலவையில் சுற்றுச்சூழலை (45%) விட நோய் சற்று அதிகமாக (55%) கணக்கில் எடுத்துக்கொள்ளப்படுகிறது.",
+    "The health score is {score}/100, which falls in the '{status}' band.":
+        "ஆரோக்கிய மதிப்பெண் {score}/100, இது '{status}' பிரிவில் வருகிறது.",
+    "This {kind} record doesn't have environmental readings stored.":
+        "இந்த {kind} பதிவில் சுற்றுச்சூழல் அளவீடுகள் சேமிக்கப்படவில்லை.",
+    "Logged readings for this analysis:\n{factors}\n\nOutside {crop}'s ideal range:\n{issues}":
+        "இந்த பகுப்பாய்வுக்கான பதிவு செய்யப்பட்ட அளவீடுகள்:\n{factors}\n\n{crop}-ன் உகந்த "
+        "வரம்புக்கு வெளியே:\n{issues}",
+    "Logged readings for this analysis:\n{factors}\n\nAll within {crop}'s typical range.":
+        "இந்த பகுப்பாய்வுக்கான பதிவு செய்யப்பட்ட அளவீடுகள்:\n{factors}\n\nஅனைத்தும் "
+        "{crop}-ன் வழக்கமான வரம்புக்குள் உள்ளன.",
+    "{summary}\n\nTop priority actions:\n{bullets}":
+        "{summary}\n\nமுன்னுரிமை நடவடிக்கைகள்:\n{bullets}",
+    "No recommendation was stored with this record.":
+        "இந்த பதிவுடன் எந்த பரிந்துரையும் சேமிக்கப்படவில்லை.",
+    "I can answer questions about this saved {kind} analysis — its severity, how "
+    "confident the model was, what happens if it's left untreated, spread risk, its "
+    "recommendation, and (where logged) the environmental readings. Try one of the "
+    "suggested questions below, or ask in your own words.":
+        "இந்த சேமிக்கப்பட்ட {kind} பகுப்பாய்வு பற்றிய கேள்விகளுக்கு என்னால் பதிலளிக்க "
+        "முடியும் — அதன் தீவிரம், மாதிரி எவ்வளவு நம்பகமாக இருந்தது, சிகிச்சையளிக்காமல் "
+        "விட்டால் என்ன நடக்கும், பரவல் ஆபத்து, அதன் பரிந்துரை, மற்றும் (பதிவு "
+        "செய்யப்பட்டிருந்தால்) சுற்றுச்சூழல் அளவீடுகள். கீழே உள்ள பரிந்துரைக்கப்பட்ட "
+        "கேள்விகளில் ஒன்றை முயற்சிக்கவும், அல்லது உங்கள் சொந்த வார்த்தைகளில் கேளுங்கள்.",
+
+    # --- record kind labels (used as {kind} above) ---
+    "Crop Health": "பயிர் ஆரோக்கியம்",
+    "Disease Detection": "நோய் கண்டறிதல்",
+    "Environmental": "சுற்றுச்சூழல்",
+    "Field Scan": "வயல் ஆய்வு",
+    "analysis": "பகுப்பாய்வு",
+    "this crop": "இந்த பயிர்",
+    "this result": "இந்த முடிவு",
+    "Unknown": "தெரியவில்லை",
+    "None detected": "எதுவும் கண்டறியப்படவில்லை",
+    "healthy": "ஆரோக்கியமானது",
+
+    # --- pages/crop_doctor.py UI ---
+    "Crop Doctor": "பயிர் மருத்துவர்",
+    "Ask the Crop Doctor": "பயிர் மருத்துவரிடம் கேளுங்கள்",
+    "Ask why a result was flagged, what happens if untreated, and get "
+    "answers grounded in that saved analysis.":
+        "ஒரு முடிவு ஏன் குறிக்கப்பட்டது, சிகிச்சையளிக்காவிட்டால் என்ன நடக்கும் என்று "
+        "கேளுங்கள், மேலும் அந்த சேமிக்கப்பட்ட பகுப்பாய்வை அடிப்படையாகக் கொண்ட "
+        "பதில்களைப் பெறுங்கள்.",
+    "Ask questions about one of your saved analyses — answers are grounded "
+    "in that record's actual numbers, not a generic chatbot.":
+        "உங்கள் சேமிக்கப்பட்ட பகுப்பாய்வுகளில் ஒன்றைப் பற்றி கேள்விகள் கேளுங்கள் — பதில்கள் "
+        "பொதுவான chatbot அல்ல, அந்த பதிவின் உண்மையான எண்களை அடிப்படையாகக் கொண்டவை.",
+    "1 · Pick a saved analysis": "1 · சேமிக்கப்பட்ட பகுப்பாய்வைத் தேர்ந்தெடுக்கவும்",
+    "Analysis type": "பகுப்பாய்வு வகை",
+    "Record": "பதிவு",
+    "No saved analyses of this type yet. Save one from the relevant page first.":
+        "இந்த வகையின் சேமிக்கப்பட்ட பகுப்பாய்வுகள் இதுவரை இல்லை. முதலில் தொடர்புடைய "
+        "பக்கத்திலிருந்து ஒன்றை சேமிக்கவும்.",
+    "Loading saved analyses failed unexpectedly. Please try again. "
+    "If the problem continues, contact the app maintainer.":
+        "சேமிக்கப்பட்ட பகுப்பாய்வுகளை ஏற்றுவதில் எதிர்பாராத பிழை ஏற்பட்டது. மீண்டும் "
+        "முயற்சிக்கவும். சிக்கல் தொடர்ந்தால், செயலி நிர்வாகியை தொடர்பு கொள்ளவும்.",
+    "2 · Ask a question": "2 · ஒரு கேள்வி கேளுங்கள்",
+    "Try asking": "கேட்டுப் பாருங்கள்",
+    "Ask about this analysis…": "இந்த பகுப்பாய்வைப் பற்றி கேளுங்கள்…",
+    "New conversation": "புதிய உரையாடல்",
+    "Grounded in": "இதன் அடிப்படையில்",
+    "This app never calls an external AI chat service for this — every "
+    "answer is generated locally from this app's own rules and stored data.":
+        "இதற்காக இந்த செயலி ஒருபோதும் வெளிப்புற AI chat சேவையை அழைக்காது — ஒவ்வொரு "
+        "பதிலும் இந்த செயலியின் சொந்த விதிகள் மற்றும் சேமிக்கப்பட்ட தரவிலிருந்து "
+        "உள்ளூரில் உருவாக்கப்படுகிறது.",
+
+    # --- suggested quick-question chips (src/crop_doctor.py SUGGESTED_QUESTIONS) ---
+    "Why is this severity level?": "இது ஏன் இந்த தீவிர நிலை?",
+    "What if I don't treat it?": "நான் சிகிச்சையளிக்கவில்லை என்றால் என்ன ஆகும்?",
+    "What should I do now?": "நான் இப்போது என்ன செய்ய வேண்டும்?",
+    "Why is the health score what it is?": "ஆரோக்கிய மதிப்பெண் ஏன் இப்படி உள்ளது?",
+    "How confident are you?": "நீங்கள் எவ்வளவு நம்பகத்தன்மையுடன் இருக்கிறீர்கள்?",
+    "Will it spread?": "இது பரவுமா?",
+    "What's out of range here?": "இங்கே எது வரம்புக்கு வெளியே உள்ளது?",
+}
+
 
 # ---------------------------------------------------------------------------
 # Lookup helpers — every one falls back to the English source on a miss,
@@ -1429,6 +1612,8 @@ def tr_template(english_template: str, lang: str, **kwargs) -> str:
         template = DISEASE_PAGE_TA[english_template]
     elif lang == "ta" and english_template in DASHBOARD_TA:
         template = DASHBOARD_TA[english_template]
+    elif lang == "ta" and english_template in CROP_DOCTOR_TA:
+        template = CROP_DOCTOR_TA[english_template]
     else:
         template = english_template
     return template.format(**kwargs)
@@ -1474,7 +1659,7 @@ def tr_label(text: str, lang: str) -> str:
     for table in (UI_LABELS_TA, NAV_LABELS_TA, HEALTH_STATUS_TA, RISK_LEVEL_TA, MISC_TA, HOME_TA,
                   ENV_UI_TA, ENV_FACTOR_LABELS_TA, ENV_STATUS_TA, ENV_NOTE_TA, HEALTH_ENGINE_TA, REC_MISC_TA,
                   HEALTH_PAGE_TA, ABOUT_TA, ALERTS_TA, OUTBREAK_TA, HISTORY_TA, FIELD_SCAN_TA,
-                  OOD_TA, DISEASE_PAGE_TA, DASHBOARD_TA):
+                  OOD_TA, DISEASE_PAGE_TA, DASHBOARD_TA, CROP_DOCTOR_TA):
         if text in table:
             return table[text]
     return text

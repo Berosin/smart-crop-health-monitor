@@ -607,6 +607,7 @@ PAGES: list[tuple[str, str, str]] = [
     ("Outbreak Alerts",      "alerts",      "alerts"),
     ("Environmental Analysis", "environment", "environment"),
     ("Crop Health Analysis", "health",      "health"),
+    ("Crop Doctor",          "crop_doctor", "crop_doctor"),
     ("Analysis History",     "history",     "history"),
     ("About Project",        "about",       "about"),
 ]
