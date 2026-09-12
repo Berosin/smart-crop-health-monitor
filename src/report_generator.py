@@ -39,6 +39,13 @@ from reportlab.platypus import (
 from config import APP_CONFIG
 from src.i18n import tr_crop, tr_disease, tr_severity, tr_recommendation, tr_label
 
+# Placeholder for a missing numeric/text value in the PDF's tables. Kept as
+# a named constant (rather than inline "\u2014" / "—") specifically because
+# an escape sequence like that directly inside an f-string's {...} part is
+# a SyntaxError on Python < 3.12 (PEP 701 only relaxed this in 3.12) — a
+# plain top-level string literal like this one has no such restriction.
+EM_DASH = "\u2014"
+
 # ---------------------------------------------------------------------------
 # Tamil font registration
 #
@@ -370,22 +377,6 @@ def generate_disease_report_pdf(pred: dict, yield_loss_estimate: dict | None = N
 # ---------------------------------------------------------------------------
 # Report 2 — aggregated Field Scan result
 # ---------------------------------------------------------------------------
-def generate_field_scan_report_pdf(report: dict, yield_loss_estimate: dict | None = None) -> bytes:
-    """Build a field-level report PDF from a Field Scan result.
-
-    Args:
-        report: the same aggregate dict pages/field_scan.py already builds
-            and renders (crop, n_total, n_healthy, n_diseased, healthy_pct,
-            dominant_disease, disease_counts, severity_counts,
-            field_health_score, leaves).
-        yield_loss_estimate: output of src.yield_loss.estimate_yield_loss()
-            for the field's dominant disease, or None to omit that section.
-
-    Per-leaf detail is summarized as a compact table (name, disease,
-    confidence, severity) rather than embedding every thumbnail — with up
-    to 30 photos in one scan, a table stays a readable, shareable page or
-    two; embedding 30 images would not.
-    """
 def generate_field_scan_report_pdf(report: dict, yield_loss_estimate: dict | None = None, lang: str = "en") -> bytes:
     """Build a field-level report PDF from a Field Scan result.
 
@@ -434,7 +425,7 @@ def generate_field_scan_report_pdf(report: dict, yield_loss_estimate: dict | Non
         (tr_label("Photos scanned", lang), str(report.get("n_total", 0))),
         (tr_label("Healthy", lang), f"{report.get('healthy_pct', 0):.0f}% ({report.get('n_healthy', 0)}/{report.get('n_total', 0)})"),
         (tr_label("Dominant disease", lang), dominant_disease_label),
-        (tr_label("Field health score", lang), f"{report.get('field_health_score', '\u2014')}/100"),
+        (tr_label("Field health score", lang), f"{report.get('field_health_score', EM_DASH)}/100"),
     ], lang=lang))
     story.append(Spacer(1, 8))
 
