@@ -162,7 +162,6 @@ RECOMMENDATION_TA: dict[str, str] = {
 # ---------------------------------------------------------------------------
 UI_LABELS_TA: dict[str, str] = {
     "Detected condition": "கண்டறியப்பட்ட நிலை",
-    "Detected condition (uncertain)": "கண்டறியப்பட்ட நிலை (உறுதியற்றது)",
     "Confidence": "நம்பகத்தன்மை",
     "model output": "மாதிரி வெளியீடு",
     "Severity": "தீவிரம்",
@@ -196,7 +195,6 @@ UI_LABELS_TA: dict[str, str] = {
     "Photo": "புகைப்படம்",
     "Confidence": "நம்பகத்தன்மை",
     "Note": "குறிப்பு",
-    "Uncertain": "உறுதியற்றது",
     "Generated": "உருவாக்கப்பட்டது",
 }
 
@@ -1010,12 +1008,6 @@ FIELD_SCAN_TA: dict[str, str] = {
         "எதிராக நோய்வாய்ப்பட்டவை, முதன்மை நோய், தீவிர பிரிவு, மற்றும் வயல் ஆரோக்கிய மதிப்பெண்.",
     "None of the uploaded photos could be analyzed. See the issues below.":
         "பதிவேற்றப்பட்ட புகைப்படங்கள் எதுவும் பகுப்பாய்வு செய்ய முடியவில்லை. கீழே உள்ள சிக்கல்களைப் பார்க்கவும்.",
-    "{n_uncertain} of {n_total} photo(s) didn't look like confident leaf matches":
-        "{n_total} புகைப்படங்களில் {n_uncertain} நம்பகமான இலை பொருத்தங்களாகத் தெரியவில்லை",
-    "They're still included in the counts and charts here, but treat "
-    "those specific results as unreliable and consider re-scanning them.":
-        "அவை இங்குள்ள எண்ணிக்கைகள் மற்றும் விளக்கப்படங்களில் இன்னும் சேர்க்கப்பட்டுள்ளன, "
-        "ஆனால் அந்த குறிப்பிட்ட முடிவுகளை நம்பகமற்றதாகக் கருதி மீண்டும் ஆய்வு செய்ய பரிசீலிக்கவும்.",
     "Photos scanned": "ஆய்வு செய்யப்பட்ட புகைப்படங்கள்",
     "Healthy": "ஆரோக்கியமானது",
     "leaves": "இலைகள்",
@@ -1028,7 +1020,6 @@ FIELD_SCAN_TA: dict[str, str] = {
     "Severity breakdown": "தீவிர பிரிவு",
     "Individual leaves": "தனிப்பட்ட இலைகள்",
     "low confidence": "குறைந்த நம்பகத்தன்மை",
-    "uncertain match": "உறுதியற்ற பொருத்தம்",
     "confidence": "நம்பகத்தன்மை",
     "photo(s) skipped": "புகைப்படங்கள் தவிர்க்கப்பட்டன",
     "New Scan": "புதிய ஆய்வு",
@@ -1040,50 +1031,6 @@ FIELD_SCAN_TA: dict[str, str] = {
     "Saving field scan…": "வயல் ஆய்வு சேமிக்கப்படுகிறது…",
     "Couldn't generate the PDF report right now. Please try again.":
         "இப்போது PDF அறிக்கையை உருவாக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
-}
-
-# ---------------------------------------------------------------------------
-# "Is this even a leaf?" uncertainty signals
-# (src/ood_detection.py + src/ood_feature_detector.py, via tr_template)
-# ---------------------------------------------------------------------------
-OOD_TA: dict[str, str] = {
-    "Top match is only {pct:.0f}% confident, and the model's "
-    "confidence is spread fairly evenly across all classes — signs this "
-    "may not be a clear photo of a leaf this model was trained on.":
-        "முதன்மை பொருத்தம் {pct:.0f}% நம்பகத்தன்மை மட்டுமே கொண்டுள்ளது, மேலும் மாதிரியின் "
-        "நம்பகத்தன்மை அனைத்து வகைகளிலும் ஏறத்தாழ சமமாகப் பரவியுள்ளது — இது இந்த மாதிரி "
-        "பயிற்சி பெற்ற இலையின் தெளிவான புகைப்படமாக இருக்காது என்பதற்கான அறிகுறி.",
-    "Top match is only {pct:.0f}% confident — lower than "
-    "expected for a clear, in-distribution photo.":
-        "முதன்மை பொருத்தம் {pct:.0f}% நம்பகத்தன்மை மட்டுமே கொண்டுள்ளது — ஒரு தெளிவான, "
-        "பொருத்தமான புகைப்படத்திற்கு எதிர்பார்க்கப்படுவதை விட குறைவு.",
-    "The model's confidence is spread fairly evenly across all "
-    "possible classes rather than settling on one — a sign of "
-    "genuine uncertainty, even though one class scored highest.":
-        "மாதிரியின் நம்பகத்தன்மை ஒரு வகையில் உறுதியாக இல்லாமல், சாத்தியமான அனைத்து "
-        "வகைகளிலும் ஏறத்தாழ சமமாகப் பரவியுள்ளது — ஒரு வகை அதிக மதிப்பெண் பெற்றாலும், "
-        "இது உண்மையான உறுதியின்மையின் அறிகுறி.",
-    "Top match is {pct:.0f}% confident, with a clear peak.":
-        "முதன்மை பொருத்தம் {pct:.0f}% நம்பகத்தன்மையுடன், தெளிவான உச்சத்துடன் உள்ளது.",
-    "Feature-space check unavailable for this model's architecture.":
-        "இந்த மாதிரியின் கட்டமைப்பிற்கு பட அம்ச-இட சரிபார்ப்பு கிடைக்கவில்லை.",
-    "Predicted class not found in this crop's embedding statistics.":
-        "கணிக்கப்பட்ட வகை இந்த பயிரின் உட்பொதிவு புள்ளிவிவரங்களில் கிடைக்கவில்லை.",
-    "This image's internal feature pattern sits unusually far "
-    "(distance {distance:.1f}, vs. a typical {threshold:.1f} for real "
-    "training examples) from anything the model saw labeled "
-    "'{class_label}' during training.":
-        "இந்த படத்தின் உள் அம்ச முறை, பயிற்சியின் போது மாதிரி '{class_label}' என "
-        "குறியிட்ட எதிலிருந்தும் வழக்கத்திற்கு மாறாக தொலைவில் உள்ளது (தூரம் "
-        "{distance:.1f}, உண்மையான பயிற்சி எடுத்துக்காட்டுகளுக்கு வழக்கமான "
-        "{threshold:.1f}-உடன் ஒப்பிடும்போது).",
-    "Feature pattern is consistent with training examples (distance {distance:.1f} of {threshold:.1f}).":
-        "அம்ச முறை பயிற்சி எடுத்துக்காட்டுகளுடன் ஒத்துப்போகிறது (தூரம் {distance:.1f} / {threshold:.1f}).",
-    "Feature pattern sits unusually far (distance {distance:.1f} vs. a "
-    "typical {threshold:.1f}) from training examples labeled "
-    "'{class_label}'.":
-        "அம்ச முறை '{class_label}' என குறியிடப்பட்ட பயிற்சி எடுத்துக்காட்டுகளிலிருந்து "
-        "வழக்கத்திற்கு மாறாக தொலைவில் உள்ளது (தூரம் {distance:.1f}, வழக்கமான {threshold:.1f}-உடன் ஒப்பிடும்போது).",
 }
 
 # ---------------------------------------------------------------------------
@@ -1144,14 +1091,6 @@ DISEASE_PAGE_TA: dict[str, str] = {
     "confidence, severity, and recommendation.":
         "படத்தைப் பதிவேற்றி, முன்னறிவிப்பு, நம்பகத்தன்மை, தீவிரம் மற்றும் "
         "பரிந்துரையைப் பார்க்க **பகுப்பாய்வு செய்யவும்** என்பதைக் கிளிக் செய்யவும்.",
-    "This doesn't look like a confident leaf match": "இது நம்பகமான இலை பொருத்தமாகத் தெரியவில்லை",
-    "Try a clearer, closer photo of a single leaf "
-    "against a plain background — the result below is shown for "
-    "reference, but treat it as unreliable.":
-        "எளிய பின்னணியில் ஒரே ஒரு இலையின் தெளிவான, நெருக்கமான புகைப்படத்தை "
-        "முயற்சிக்கவும் — கீழே உள்ள முடிவு குறிப்புக்காக மட்டுமே காட்டப்படுகிறது, "
-        "ஆனால் அதை நம்பகமற்றதாகக் கருதவும்.",
-    "Detected condition (uncertain)": "கண்டறியப்பட்ட நிலை (உறுதியற்றது)",
     "Detected condition": "கண்டறியப்பட்ட நிலை",
     "Confidence": "நம்பகத்தன்மை",
     "model output": "மாதிரி வெளியீடு",
@@ -1606,8 +1545,6 @@ def tr_template(english_template: str, lang: str, **kwargs) -> str:
         template = HISTORY_TA[english_template]
     elif lang == "ta" and english_template in FIELD_SCAN_TA:
         template = FIELD_SCAN_TA[english_template]
-    elif lang == "ta" and english_template in OOD_TA:
-        template = OOD_TA[english_template]
     elif lang == "ta" and english_template in DISEASE_PAGE_TA:
         template = DISEASE_PAGE_TA[english_template]
     elif lang == "ta" and english_template in DASHBOARD_TA:
@@ -1659,7 +1596,7 @@ def tr_label(text: str, lang: str) -> str:
     for table in (UI_LABELS_TA, NAV_LABELS_TA, HEALTH_STATUS_TA, RISK_LEVEL_TA, MISC_TA, HOME_TA,
                   ENV_UI_TA, ENV_FACTOR_LABELS_TA, ENV_STATUS_TA, ENV_NOTE_TA, HEALTH_ENGINE_TA, REC_MISC_TA,
                   HEALTH_PAGE_TA, ABOUT_TA, ALERTS_TA, OUTBREAK_TA, HISTORY_TA, FIELD_SCAN_TA,
-                  OOD_TA, DISEASE_PAGE_TA, DASHBOARD_TA, CROP_DOCTOR_TA):
+                  DISEASE_PAGE_TA, DASHBOARD_TA, CROP_DOCTOR_TA):
         if text in table:
             return table[text]
     return text
