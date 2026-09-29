@@ -342,7 +342,8 @@ CREATE TABLE IF NOT EXISTS analyses (
 - `created_at` is filled in automatically (UTC, ISO-8601) if not supplied.
 - `src/db.py` is entirely framework-independent (no Streamlit import), so
   it can be exercised directly from a Python shell or unit tests.
-- Every database operation is wrapped so a raw `sqlite3.Error` is never
+- Every database operation is wrapped so a raw backend exception (SQLite
+  or, when configured, Turso/libSQL — see §17 Deployment) is never
   surfaced to the UI — it becomes a clean `DatabaseError` with an
   actionable message instead.
 
@@ -478,12 +479,38 @@ weights are now on disk. Redeploys on Streamlit Cloud get a fresh container
 each time, so **this first-boot download happens again after every
 redeploy** — expected, and worth knowing about if a redeploy looks slow.
 
-**Data persistence note:** Streamlit Community Cloud's filesystem is
-ephemeral — the SQLite database (`database/crop_health.db`) and any
-uploaded images reset on redeploy or a container restart, same as
-`models/` above. Fine for a course demo; for anything persistent beyond
-that, `database/crop_health.db`'s path would need to point at real
-persistent storage instead.
+**Data persistence — Turso (libSQL):** Streamlit Community Cloud's filesystem
+is ephemeral — a local SQLite file resets on every redeploy or container
+restart. `src/db.py` avoids this automatically once `TURSO_DATABASE_URL` and
+`TURSO_AUTH_TOKEN` are configured: it switches from a local SQLite file to a
+persistent [Turso](https://turso.tech) database over the network (same SQL,
+same schema — libSQL is a SQLite-compatible fork, so nothing else changes).
+Without those two secrets set, it silently falls back to the local SQLite
+file exactly as before — fine for local development.
+
+To set it up:
+1. Sign up at [turso.tech](https://turso.tech) (free tier, no card required)
+2. Dashboard → **Databases** → **Create Database** → give it a name, pick a
+   region close to you
+3. On the database's detail page, copy the **Database URL**
+   (`libsql://<name>-<org>.turso.io`) and generate an **auth token**
+4. Add both to `.streamlit/secrets.toml` locally (see
+   `.streamlit/secrets.toml.example`) and to Streamlit Cloud's app Secrets box:
+   ```toml
+   TURSO_DATABASE_URL = "libsql://your-db-yourorg.turso.io"
+   TURSO_AUTH_TOKEN = "eyJ..."
+   ```
+5. That's it — `init_db()` creates all four tables (`analyses`,
+   `disease_analyses`, `environment_analyses`, `field_scans`) on Turso
+   automatically on first save, same as it always has locally.
+
+Uploaded leaf images (`data/uploads/`) are a separate concern from the
+database and are **not** covered by Turso — those still reset on redeploy,
+since Turso stores rows, not files. Only the Disease Detection page saves an
+image at all (Field Scan saves aggregate stats only); if losing those
+specific image files on redeploy matters for your use case, they'd need
+their own persistent object storage (e.g. S3-compatible storage) separately
+from this setup — out of scope for the course-project deployment here.
 
 ## 18. Sample Usage
 

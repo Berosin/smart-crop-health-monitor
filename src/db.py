@@ -1,8 +1,29 @@
-"""SQLite persistence layer for saved analyses.
+"""Persistence layer for saved analyses.
 
 This module is intentionally **independent of Streamlit** so it can be unit
-tested and reused from CLI scripts, notebooks, or any non-UI context. The
-only third-party dependency is the Python standard library (`sqlite3`).
+tested and reused from CLI scripts, notebooks, or any non-UI context.
+
+Backend
+-------
+Two interchangeable backends, chosen automatically at connection time:
+- **Turso (libSQL)** — a remote, persistent SQLite-compatible database. Used
+  whenever TURSO_DATABASE_URL + TURSO_AUTH_TOKEN are configured (env vars,
+  or st.secrets — same env-var-first resolution order as
+  src.weather.resolve_api_key() and src.model_fetch.resolve_models_zip_url()).
+  This is what makes saved analyses survive a Streamlit Community Cloud
+  redeploy/restart, since that platform's local filesystem is ephemeral.
+- **Local SQLite file** (config.DB_PATH) — the fallback when no Turso
+  credentials are configured, e.g. local development. Behaves exactly as
+  this module always has.
+
+Both backends are driven through the same SQL and the same DB-API 2.0 call
+shapes (`.execute(sql, params)`, `.commit()`, `.fetchall()`, `.lastrowid`,
+`.rowcount`, `cursor.description`) — libSQL is a SQLite-file-format- and
+wire-compatible fork, so the schema and every query below run unmodified on
+either backend. Row->dict conversion is done manually via `cursor.description`
+(see `_rows_to_dicts`/`_row_to_dict`) rather than sqlite3's `Row` row_factory,
+since that's a sqlite3-module-specific extension libSQL doesn't guarantee —
+`cursor.description` is standard DB-API 2.0 and works identically on both.
 
 Schema
 ------
@@ -41,6 +62,7 @@ Functions
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -48,6 +70,34 @@ from typing import Iterator
 
 from config import DB_PATH
 from src.errors import DatabaseError
+
+
+# ---------------------------------------------------------------------------
+# Turso (libSQL) credential resolution
+# ---------------------------------------------------------------------------
+def resolve_turso_credentials() -> tuple[str, str] | None:
+    """(TURSO_DATABASE_URL, TURSO_AUTH_TOKEN) if both are configured, else
+    None. Same env-var-first, then st.secrets resolution order the app's
+    other deployment secrets use — see src.weather.resolve_api_key() and
+    src.model_fetch.resolve_models_zip_url().
+    """
+    url = os.environ.get("TURSO_DATABASE_URL")
+    token = os.environ.get("TURSO_AUTH_TOKEN")
+    if url and token:
+        return url, token
+
+    try:
+        import streamlit as st
+        url = st.secrets.get("TURSO_DATABASE_URL")
+        token = st.secrets.get("TURSO_AUTH_TOKEN")
+        if url and token:
+            return url, token
+    except Exception:
+        # No secrets.toml configured at all — st.secrets raises in that
+        # case rather than returning empty; expected locally, not an error.
+        pass
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -147,24 +197,57 @@ FIELD_SCAN_COLUMNS = [
 # Connection helper
 # ---------------------------------------------------------------------------
 @contextmanager
-def _connect(db_path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
-    """Open a SQLite connection, enable FK + Row factory, close on exit.
+def _connect(db_path: str = DB_PATH) -> Iterator["sqlite3.Connection"]:
+    """Open a database connection (Turso if configured, else local SQLite
+    file), close on exit.
 
-    Wraps any sqlite3 failure (locked file, disk full, permissions,
-    corrupted database, ...) into a DatabaseError with a clean, specific
-    message — callers never see a raw sqlite3.Error.
+    Turso credentials, when present, always take priority over `db_path` —
+    that parameter only matters for the local-file fallback (and for tests,
+    which pass an explicit tmp path to keep runs isolated from both a real
+    local file and any configured Turso database).
+
+    Wraps any backend failure (locked file, disk full, permissions,
+    corrupted database, network/auth error, ...) into a DatabaseError with
+    a clean, specific message — callers never see a raw backend exception.
+    Caught broadly (not sqlite3.Error specifically) because libsql raises
+    plain ValueError/RuntimeError for its failures, not sqlite3's exception
+    hierarchy.
     """
+    creds = resolve_turso_credentials()
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row          # rows behave like dicts
-    except sqlite3.Error as e:
+        if creds:
+            import libsql
+            url, token = creds
+            conn = libsql.connect(database=url, auth_token=token)
+        else:
+            conn = sqlite3.connect(db_path)
+    except Exception as e:
         raise DatabaseError(f"Could not open the database: {e}") from e
     try:
         yield conn
-    except sqlite3.Error as e:
+    except Exception as e:
         raise DatabaseError(f"Database operation failed: {e}") from e
     finally:
         conn.close()
+
+
+def _rows_to_dicts(cursor) -> list[dict]:
+    """Convert every remaining row in `cursor` to a dict, keyed by column
+    name. Uses `cursor.description` (standard DB-API 2.0) rather than
+    sqlite3's `Row` row_factory, so this works identically whether `cursor`
+    came from a local sqlite3 connection or a remote libsql one.
+    """
+    cols = [c[0] for c in cursor.description]
+    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+def _row_to_dict(cursor, row) -> dict | None:
+    """Same conversion as _rows_to_dicts, for a single already-fetched row
+    (e.g. from .fetchone())."""
+    if row is None:
+        return None
+    cols = [c[0] for c in cursor.description]
+    return dict(zip(cols, row))
 
 
 # ---------------------------------------------------------------------------
@@ -214,20 +297,20 @@ def _get_all_from(table: str, limit: int, db_path: str = DB_PATH) -> list[dict]:
     """Shared "most recent N rows" query for any of the three tables."""
     init_db(db_path)
     with _connect(db_path) as conn:
-        rows = conn.execute(
+        cur = conn.execute(
             f"SELECT * FROM {table} ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
-    return [dict(r) for r in rows]
+        )
+        return _rows_to_dicts(cur)
 
 
 def _get_by_id_from(table: str, row_id: int, db_path: str = DB_PATH) -> dict | None:
     """Shared "fetch one row by id" query for any of the three tables."""
     init_db(db_path)
     with _connect(db_path) as conn:
-        row = conn.execute(
+        cur = conn.execute(
             f"SELECT * FROM {table} WHERE id = ?", (row_id,)
-        ).fetchone()
-    return dict(row) if row else None
+        )
+        return _row_to_dict(cur, cur.fetchone())
 
 
 def _delete_from(table: str, row_id: int, db_path: str = DB_PATH) -> bool:

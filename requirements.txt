@@ -32,6 +32,7 @@ Pillow>=10.2.0
 
 # Live weather integration (src/weather.py — OpenWeatherMap client)
 requests>=2.31.0
+libsql>=0.1.0  # Turso — persistent database for saved analysis history
 
 # PDF report export (src/report_generator.py)
 reportlab>=4.1.0
